@@ -28,3 +28,7 @@ This is the faithful base: a decompilation whose code follows Zax.exe's structur
 6. `git config core.hooksPath tools/git-hooks` (the pre-push hook: no game data, no private names or paths).
 
 The game data is not included and must never go into the repository: every player brings the original assets from their own copy.
+
+## Licence
+
+The project's own code and documentation are under the MIT licence (`LICENSE`). The libraries in `reimpl/third_party/` keep their own licences, named in their folders: zlib 1.1.3 (the zlib licence), libogg and libvorbis 1.0 beta 4 (a BSD-style licence, `COPYING`). This licence covers only the project's own code and documentation. It grants no right to "Zax: The Alien Hunter" itself: the game, its executable, data, texts, names and artwork belong to their rights holders, are not included, and every player brings them from their own copy.
