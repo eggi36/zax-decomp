@@ -1,0 +1,75 @@
+#!/bin/sh
+# Refuses a push whose history holds game data (gamedata/, spieldaten/; copyrighted), names the internal test setup or
+# holds private words, anywhere in the pushed commits' files, file names, messages, author or committer:
+#   - the share prefix, the addresses and the player names of zax-testtools' vmtest/local.json (git-ignored there);
+#   - the words of its key "private_words" (names and addresses that must not appear in a published repository;
+#     kept only in that git-ignored file, so this hook does not name them itself);
+#   - any home folder path (/Users/<name>/, /home/<name>/) and any e-mail address except the GitHub noreply ones.
+# This repository is meant to be published: without that local.json (ZAX_TESTTOOLS, else zax-testtools next to this
+# repository) or without "private_words" in it the push is refused, so a check is never skipped silently.
+# Install: git config core.hooksPath tools/git-hooks
+zero=0000000000000000000000000000000000000000
+root=$(git rev-parse --show-toplevel)
+local="${ZAX_TESTTOOLS:-$root/../zax-testtools}/vmtest/local.json"
+if [ ! -f "$local" ]; then
+    echo "pre-push: $local not found (ZAX_TESTTOOLS): the private word list is missing - push aborted." >&2
+    exit 1
+fi
+patterns=$(python3 -I - "$local" <<'EOF'
+import json, re, sys
+c = json.load(open(sys.argv[1], encoding='utf-8'))
+private = [w for w in c.get('private_words', []) if len(w) >= 4]
+if not private:
+    sys.exit(3)
+lan = c.get('lan', {})
+words = [c.get('share_prefix', '')] + [g.rstrip('*') for g in c.get('extra_globs', [])]
+words += [lan.get('host_ip', ''), lan.get('game_host_ip', '')] + list(lan.get('names', []))
+words += [ip.rsplit('.', 1)[0] + '.' for ip in (lan.get('host_ip', ''), lan.get('game_host_ip', '')) if ip.count('.') == 3]
+out = sorted({re.escape(w) for w in words if len(w) >= 4})
+# case-insensitive: every letter as [xX]
+out += [''.join(f'[{ch.lower()}{ch.upper()}]' if ch.isalpha() else re.escape(ch) for ch in w) for w in private]
+out += [r'/Users/[A-Za-z0-9._-]+/', r'/home/[A-Za-z0-9._-]+/']
+print('\n'.join(out))
+EOF
+)
+if [ $? -ne 0 ] || [ -z "$patterns" ]; then
+    echo "pre-push: no \"private_words\" in $local - push aborted." >&2
+    exit 1
+fi
+mail='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
+while read local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    if [ -n "$(git rev-list -n 1 "$local_sha" -- gamedata spieldaten)" ]; then
+        echo "pre-push: $local_ref contains gamedata/ (or its old name spieldaten/) in its history - push aborted." >&2
+        exit 1
+    fi
+    range=$local_sha
+    [ "$remote_sha" != "$zero" ] && range="$remote_sha..$local_sha"
+    for c in $(git rev-list "$range"); do
+        meta=$(git log -1 --format='%an%n%ae%n%cn%n%ce%n%B' "$c")
+        if printf '%s\n' "$meta" | grep -qE -f /dev/stdin <<EOF2
+$patterns
+EOF2
+        then
+            echo "pre-push: commit $c's message, author or committer holds a private word or the test setup - push aborted." >&2
+            exit 1
+        fi
+        if printf '%s\n' "$meta" | grep -oE "$mail" | grep -vqE '@users\.noreply\.github\.com$|^noreply@anthropic\.com$'; then
+            echo "pre-push: commit $c names an e-mail address other than a GitHub noreply one - push aborted." >&2
+            exit 1
+        fi
+        if git ls-tree -r --name-only "$c" | grep -qE -f /dev/stdin <<EOF3
+$patterns
+EOF3
+        then
+            echo "pre-push: commit $c has a file name with a private word or the test setup - push aborted." >&2
+            exit 1
+        fi
+        if [ -n "$(printf '%s\n' "$patterns" | git grep -l -I -E -f /dev/stdin "$c" -- 2>/dev/null)" ]; then
+            echo "pre-push: commit $c holds a private word, a home folder path or the test setup in its files - push aborted." >&2
+            printf '%s\n' "$patterns" | git grep -l -I -E -f /dev/stdin "$c" -- | head -5 >&2
+            exit 1
+        fi
+    done
+done
+exit 0

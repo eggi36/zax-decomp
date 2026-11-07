@@ -1,0 +1,21 @@
+# never commit game data
+Data/
+Data.dat
+*.zip
+# do not publish output and images generated from game data (including docs/images)
+out/
+*.png
+__pycache__/
+*.pyc
+.venv
+.DS_Store
+# level files are game data
+*.zax
+*.way
+# the game executable (copyrighted)
+*.exe
+*.EXE
+# the game data of every edition (copyrighted; since 2026-10-29 no longer committed, the earlier
+# state stays in the local history; the pre-push hook still blocks it)
+gamedata
+# the local test setup (machine names, addresses) lives in zax-testtools' git-ignored vmtest/local.json (since 2026-11-07)

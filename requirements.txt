@@ -1,0 +1,6 @@
+numpy>=1.21
+Pillow>=9.0
+# reading Zax.exe (the decompilation tools, zaxtools.exeschema)
+capstone>=5.0
+pefile>=2023.2
+# zaxtools comes from zax-formats next to this repository (tools/formats_path.py, ZAX_FORMATS)
