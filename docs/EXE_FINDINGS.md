@@ -361,7 +361,7 @@ At program start every class registers itself and its fields [verified]:
 
 ## Exe variants
 
-Compared with our `Zax.exe` (identical to `Zax_German_noCD.exe`; since 2026-10-29 at `gamedata/Zax - German/Zax.exe`, the editions next to it in `gamedata/`, the earlier file names in the first column: `Zax_English.exe` = `Zax - English/Zax.exe`, `Zax_English_noCD.exe` = `Mods_Patches/noCD/Zax_English_noCD.exe` and `Zax_noCD_2.exe`, `Zax_Spain.exe` = `Zax - Spanish/Zax.exe`, `Zax_ChineseSimpl.exe` = `Zax - Chinese Simplified/Zax.exe`, `Zax_Demo.exe` = `Demos/ZaxDemo (2001-07-19)/Zax.exe` [verified: SHA-1]). Build date from the embedded `__DATE__`/`__TIME__`, build number from the function that fills the version text "%s %s %d" (reference `0x5908a0`).
+Compared with our `Zax.exe` (identical to `Zax_German_noCD.exe`; since 2026-10-29 at `gamedata/Zax - German/Zax.exe`, the editions next to it in `gamedata/`, the earlier file names in the first column: `Zax_English.exe` = `Zax - English/Zax.exe`, `Zax_English_noCD.exe` = `Mods_Patches/noCD/Zax_English_noCD.exe` and `Zax_noCD_2.exe`, `Zax_German_noCD.exe` also = `Mods_Patches/noCD/Zax_noCD_1.exe` [confirmed 2026-11-07: SHA-1], `Zax_Spain.exe` = `Zax - Spanish/Zax.exe`, `Zax_ChineseSimpl.exe` = `Zax - Chinese Simplified/Zax.exe`, `Zax_Demo.exe` = `Demos/ZaxDemo (2001-07-19)/Zax.exe` [verified: SHA-1]). Build date from the embedded `__DATE__`/`__TIME__`, build number from the function that fills the version text "%s %s %d" (reference `0x5908a0`).
 
 | File | SHA-1 (start) | Build date | Build | Finding |
 |---|---|---|---|---|
@@ -375,6 +375,8 @@ Compared with our `Zax.exe` (identical to `Zax_German_noCD.exe`; since 2026-10-2
 | `Demos/ZaxDemo (2001-08-06)/Zax.exe` | `b2887cae` | 2001-08-01 | 1308 | Added 2026-10-29. **The release build without copy protection and without crack**: `.text`, `.rdata` and `.data` byte for byte our exe's except 4 bytes at `0x5c5326`, the GameSpy port (`htons(29910)`, ours `htons(0xFFFF)`); no `.cms_t`/`.cms_d` sections. A demo only at run time, because its data lack the model `Om` (below). |
 | `Zax - Polish/Zax.exe` | `a2b2bf17` | 2001-10-24 | 1309 | Added 2026-10-29. Build 1309 without copy protection and with two patches of the Polish localisation (Polish weapon names in the default key bindings, "Change %s" without its note); see "Build 1308 → 1309". |
 | `Zax - Russian/Zax.exe` | `a918c784` | 2001-08-01 | 1308 | Added 2026-10-29. Byte for byte our exe (`Zax_German_noCD.exe`); the language comes from its data. |
+
+**Telling the editions apart** [confirmed 2026-11-07: every exe of the table; zax-launcher's `edition.h` does it this way]: the build from `0x5908a0` (`mov eax, build; ret`) and the version text at `0x623660`; SecuROM by the entry point lying in `.cms_t` (the noCD exes keep `.cms_t`/`.cms_d`, so the sections alone do not tell); the code layout by the entry point (`0x5d328f` in 1308, `0x5d329f` in 1309) and a call from below `0x59fc70` into the shifted code (`0x50eab7` → `CMainMenu::CMainMenu`, `0x5be4a0` / `0x5be4b0`); the Polish patch by the `push 0x5e9c80` at `0x59cc54`.
 
 ### Build 1308 → 1309
 
