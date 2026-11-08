@@ -4,7 +4,6 @@ A faithful decompilation of "Zax: The Alien Hunter" (Reflexive Entertainment / J
 
 This is the faithful base: a decompilation whose code follows Zax.exe's structure; it changes only with proof that the behaviour stays the same. Related repositories, each next to this one in the same folder:
 
-- **zax-redone** – the port built on this base (SDL3, macOS, 64 bit, widescreen, bug fixes as switches)
 - **zax-launcher** – Zax-Launcher.exe, the classic launcher of the original Zax.exe (direct start into a map, debug switches)
 - **zax-formats** – `zaxtools`, every file format of the game read and written byte for byte, and its command line tools
 - **zax-editor** – the level editor
