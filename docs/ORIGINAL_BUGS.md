@@ -60,18 +60,21 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: "the game shows the mini map also with `1` [verified], and no code reads the field [confirmed]".
 - Evidence: [verified] / [confirmed]. Source: `zax-formats/docs/FORMATS.md` 5, mini map.
 - Fix: yes (opt-in, if the field should work). Editor: yes (say that the field does nothing in the game).
+- Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: 10 of the 112 levels set `Disable Mini-Map=1` (the four "TargDens" levels, "Inside Ship", five multiplayer maps).
 
 **1.7 The companion's spot ignores the computed height** — `CCompanionAI` (`CompanionAI_PickSpot` `0x46ead0`), constant `0x5efeec`
 - What: "the companion's spot has the leader's y + 1.0 (the constant `0x5efeec`) instead of the computed sine part (the original computes it and overwrites it)".
 - When: every companion update. Impact: the companion's target spot is not spread around the leader as computed.
 - Evidence: [confirmed: code `0x46ead0`, `reimpl/src/ai_chase.cpp`; VM]. Source: section 8, "The game's own behaviours and CCameraTrakerAI …".
 - Fix: yes (opt-in, gameplay). Editor: no.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a drone created next to Zax in an empty level, frame and world log]: over 769 frames the drone's offset from Zax has y in -30..51 (sd 14.6), x in -155..192 (sd 75); the spot does not spread in y as it does in x.
 
 **1.8 "Smooth Turning" always on in `CEntityBehaviorMoveToPos`** — `CEntityBehaviorMoveToPos::Update` `0x430f20`
 - What: "Update tests 'Smooth Turning' on its flags with 8 already set (the original ORs 8 into the copy it tests), so the turn always goes through the steering".
 - When: every move-to-position behaviour. Impact: the field's off setting has no effect there.
 - Evidence: [confirmed: code `0x430f20`, `reimpl/src/ai_rest_a.cpp` (bit 8 is "Smooth Turning", `MoveToPos_Make`); VM]. Source: section 8, "Phase 3 remains, band A".
 - Fix: yes (opt-in, gameplay). Editor: no (could mention that "Smooth Turning" off is ignored here).
+- Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: `Smooth Turning=0` in 8,152 of the 10,384 instances of the 112 levels, so the off setting this entry ignores is the normal case.
 
 **1.9 The pursue AI restores its target's passable flag correctly (not a bug)** — `CChasePursueAI::TryMove` `0x46cb10`
 - What: "the pursue AI restores its target's passable flag only when it was not set (and then calls slot 58 with 0)". It makes the target passable (`0x2000000`, slot 58) for the move and afterwards, when the flag was not set before, clears it again (slot 59) and calls slot 58 with 0; when it was set before, it stays set. That is the state before the move in both cases, the same result as `CChaseInvestigateAI`'s restore (`0x46c0a0`: slot 59, then slot 58 with the old bit). (Until 2026-10-29 the entry said "the wrong way round" — wrong, the code restores the flag; only the call of slot 58 with 0 is odd, and it sets no bit.)
@@ -84,17 +87,20 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: any hit larger than the shield's charge. Impact: the overflow damage never reaches the character.
 - Evidence: [confirmed: code `0x56da70`, `reimpl/src/ai_shield.cpp`; VM]. Source: section 8, "The skeleton AI, the shields, …".
 - Fix: yes (opt-in, gameplay balance). Editor: no.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a shield with charge 7 given to Zax in an empty level, a turret firing 20-point shots; frame log]: without the shield the damage is 20 at game time 2.48 s, 40 at 2.93 s; with the shield the first damage (20, not 13) comes at about 3.0 s: the first hit is absorbed entirely, charge 7 against 20 (two runs of each).
 
 **1.11 A pickup disappears when nobody took the item** — `CPickupAI`
 - What: the pickup "removes the pickup even when nobody took the item".
 - Evidence: [confirmed: code `0x53e110` (`CPickupAI::Collect`: also when the alternate item refuses too, the part hides or is marked for deletion), `reimpl/src/ai_pickup.cpp`; VM]. Source: section 8, "The patrol, pickup and player control AIs".
 - Fix: yes (opt-in). Editor: no.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: own level at full health, a `CPickupAI` with item and alternate "Fruit Single" (health, refused)]: inside a `CSimultaneousAIsAI` beside a `CPassThroughTriggerAI` the pedestal is gone after the walk over it and health stays 100 (nothing given); the same pickup placed directly stays. Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: 213 files contain `CPickupAI`, none of them also a wrapper class (`CSimultaneousAIsAI`, `CSeriesAI`, `CWhileAI`, `CForceUpdatingAI`, `CLimitedTimeAI`, `CTemporaryTaskAI`, `CStateAI`).
 
 **1.12 Using non-count items finds the same item again** — `Part_UseItems` `0x426930`
 - What: "marks a non-count item for deletion and searches again from the start, finding the same item until n are used up".
 - When: an action uses n > 1 items of a kind that has no count. Impact: as quoted (fewer distinct items used than asked for).
 - Evidence: [confirmed: code `0x426930`, `reimpl/src/inventory_items.cpp`; VM] (the function's name is an [assumption] in `docs/exe_symbols.csv`). Source: section 8, "Inventory items and definitions".
 - Fix: yes (opt-in). Editor: no.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: own level, three "Key, Stone" given, use 2, a check for 2]: the check still succeeds, so at most one item was used. Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: the only `CUseInventoryItemAction` with `Count` above 1 are "Key, Moon" and "Key, Sun" in `ACT 2/M9/09 Assimilate Temple1` (`Count=2`; both keys have `Max Count=1`).
 
 **1.13 `CChangeSoundEnvironmentTypeAction` does nothing** — empty function `0x4186e0`
 - What: "`CChangeSoundEnvironmentTypeAction` hands the type to an empty function (`0x4186e0`, 'ret 4')."
@@ -107,12 +113,14 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: whenever such an object is created; whether the game's data creates them during play is not stated.
 - Evidence: [confirmed: code `0x53a990`/`0x53aa00` (the constructor inlined in Create and CreateArray), `0x55c390`, `reimpl/src/ai_classes.cpp`; VM]. Source: section 8, "AI classes: Create, CreateArray, constructors …".
 - Fix: yes (opt-in). Editor: yes (an obsolete class; warn when a level uses it).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: frame log's state hash of the generator]: in two runs of `ACT 3/M21/21 Small Volcanic` the generator `0x6d06c0` differs at the start and ends the load on the same state (hash `979d8c55`); in two runs of an empty level it keeps its differing states. Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: that level is the only one with the class, one instance; no other file names it.
 
 **1.15 Fidget order 5 never advances; orders 3 and 4 are not implemented** — `CFidgetData::PickFidget` `0x4a0680`
 - What: order 5 "the next" "never advances: it reads the index after the last one taken and only wraps it"; "3 and 4 'Not Implemented Yet!!!'".
 - When: fidget settings with order 3, 4 or 5 (whether any model uses them is not stated).
 - Evidence: [confirmed: code `0x4a0680`, `reimpl/src/behavior_rest.cpp`; VM]. Source: section 8, "The rest of the entity behaviours …".
 - Fix: yes (opt-in, order 5). Editor: yes, if it ever edits fidget settings.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a Korbo Slave with "Sequential Order", every 0.5 s, world log]: its sequence number alternates 5, 19, 5, 19, … (31 changes), never another. Shipped data [confirmed 2026-11-09: scan of `DATA.dat`]: no level and no model uses order 5 (no file holds "Sequential Order", the binary fields store the name too); the levels use "Random Order" 36 times, "First Sequence Only" once.
 
 **1.16 DirectPlay's slot 100 is one past the player array** — the message handler of the DirectPlay layer (`dplay.h`), factory object 0x900 bytes
 - What: "a new player gets the highest free slot from **100** down to 2 – slot 100 is the 'slots changed' byte +0x8fc and the dword +0x900, one past the array"; "the factory's 0x900-byte object is too short for the slot array's slot 100 (`+0x900`/`+0x904`), so a create-player message that takes slot 100 writes past it (the original's bug, kept; dplay.h)".
@@ -130,9 +138,10 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 
 **1.18 The aim cursor is recentred on (320, 240), also at 800×600** — `ControlConfig::AnalogueVector` `0x4708c0` (the recentring at `0x470a6a`), constants `0x5eff98`/`0x5eff9c` (320, 240) and `0x5effa0` (200)
 - What: the analogue aiming vector (+0x5c/+0x60, whose angle is the aim, `0x470b50`) is "the mouse's offset from (320, 240) times 0.005" (with +0x4c), or the joystick's axes outside the dead zone of 0.15 (with +0x4d); normalised beyond length 1 and clamped to [−1, 1], "a changed vector moves the mouse back to (x · 200 + 320, y · 200 + 240)". The centre is fixed, not the screen's: at 800×600 it lies 80 pixels left of and 60 above the screen's centre (400, 300).
-- When: the joystick (or the mouse vector of +0x4c) at 800×600, and at every resolution above 640×480. Impact: the aim circle sits off the centre of the screen [assumption: the effect is read from the code, not seen; needs a game test with a joystick at 800×600].
+- When: the joystick (or the mouse vector of +0x4c) at 800×600, and at every resolution above 640×480. Impact: the aim circle sits off the centre of the screen [verified 2026-11-09 with the mouse, last bullet of this entry; the joystick route: assumption, from the code].
 - Evidence: [confirmed: code `0x4708c0`, `reimpl/src/input_rest_a.cpp`; VM] (the formula; the cursor is in screen pixels: `0x518570` centres it elsewhere at the screen's half size, `reimpl/src/c4_rest.cpp`). Source: reported by the ZaxHiRes mod (`NOTES.md`: "aim cursor recentred at (320,240) +- 200"; `README.md`: with a joystick the cursor "still centres on the old 640x480 middle"), until 2026-10-29 entry 5.4 [unverified]; `reimpl/src/input_rest_a.cpp`.
 - Fix: yes (opt-in: the screen's centre; relevant for phase 8, widescreen). Editor: no.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: 800×600, own level with the pistol given by a trigger, the cursor moved with the mouse]: with the cursor at the screen's middle (400, 300) the aim ring lies lower right of Zax; with the cursor at (320, 240) it lies on him. The joystick route was not run in the VM.
 
 **1.19 The sound dialog's channel choice is lost at the next start** — `SoundDialog::Notify` `0x57f870`, `Sound_LoadOptions` `0x57ee90`
 - What: the two channel buttons of the sound dialog write `Sounds Maxing Chanels` = 32 or 5 into `Zax.CFG` (`0x57f960`, `0x57f991`; string `0x62242c`) and set the limit at once (`0x57b1b0`); at start the game reads `Sounds Mixing Chanels` (default 32, `0x57ef3c`; string `0x6223e0`). Nothing reads the key the dialog writes.
@@ -168,6 +177,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: a binary object stream with a class name of 0x64 characters or more.
 - Evidence: [confirmed: disassembly; VM where noted]. Source: section 6, "Object files, CObject base methods, the slots that create objects".
 - Fix: yes. Editor: yes (class names must be the registered ones, which are short).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a model with a class name of 5000 characters]: the game ends during "Layer Loading" with the box "FATAL ERROR!" ("appears to have become corrupted"), from `ClassRegistry_Create` `0x415c00` called at `0x418d3a` (`ObjectField_ReadBinary`). No crash at this length.
 
 **2.4 A count that does not match the elements** — the pointer array and `new[]` array readers; `0x419810`, `0x418050`, `0x416310`
 - What: "A count line that does not match the elements leaves states the original cannot handle either: the pointer array creates default objects (element slot 10) and the game ends deleting them …, the `new[]` array reads past its data". The three readers "read their count into an uninitialised slot (`0x416310`: the caller's ecx, the stream)".
@@ -217,6 +227,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: making the pattern from a typed name: "an empty map name never ends, as in the original".
 - Evidence: [confirmed: code `0x5bc910`, `reimpl/src/game_types.cpp`; VM]. Source: section 8, "The game types Capture the Flag and Salvage King, …".
 - Fix: yes. Editor: maybe (whether a level can give an empty map name is not stated).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a quick save with `Map Name` empty, the Load screen opened]: the main thread never leaves `CZaxSaveGameStats::SetPattern` (samples: `ZString_AppendFormat` called from `0x5bca91`).
 
 ### Models, sequences, images and fonts
 
@@ -225,16 +236,19 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: an object whose model or sequence is missing, a sequence index beyond the model's.
 - Evidence: [confirmed: code]. Source: section 8, "The entity base classes …" and "The entity classes above CEntityAnimated".
 - Fix: yes (report instead of crash). Editor: yes (models and sequence names must exist; `Cur Sequence` and indices within the model).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: an animated child under a part that is not animated, drawn near the player]: access violation reading `0xb4` at `0x48f585` (`EntityAnimated_GetFade`).
 
 **2.14 Frames that do not divide by the rotations end the game** — `CRotationSequence` slot 27
 - What: "ends the game with 'There are not an equal number of frames per rotation…' when the frames do not divide by the rotations and the sequence is being loaded by name (`0x713130`)". A deliberate check.
 - Evidence: [confirmed: code]. Source: section 9, "Sprites and entities".
 - Fix: no (deliberate). Editor: yes (frames of a rotation sequence must divide by its rotations).
+- The box is dead in build 1308 [confirmed 2026-11-09: rel32 and dword scan of the exe]: `0x713130` has exactly five dword references (the constructor at `0x55f750`, the atexit at `0x55f784`, `ZString_NotEmpty` at `0x560113`, the `c_str` at `0x560121`, `ZString_Clear` at `0x560154`), none of which writes a name into it, so the name stays empty and the test before the box is always false. Slot 27 `0x5600f0` has no rel32 caller (one dword: the vtable entry `0x5fec80`).
 
 **2.15 A bounce factor outside 0..1 ends the game** — `CEntityMovable` slot 94
 - What: "ends the game for a bounce factor above 1, below 0 or NaN ('Model %s has a Bounce Factor of %f. …', 'FATAL ERROR!', exit(-1))". A deliberate check.
 - Evidence: [confirmed: code]. Source: section 8, "The entity classes above CEntityAnimated".
 - Fix: no (deliberate). Editor: yes (model "Bounce Factor" in [0, 1]).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a walker with a model of Bounce Factor 1.5 moving]: the "FATAL ERROR!" box from `CEntityMovable::BounceMotion` (`0x491831`).
 
 **2.16 The frame setter never ends on NaN or huge frames** — `EntityAnimated_SetFrame` `0x48feb0`
 - What: it "wraps the frame into the sequence's frame count by repeated adding/subtracting (it does not end for NaN, infinity or huge values, in the original as here)".
@@ -256,6 +270,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: RLE data the game's own encoder does not write ("the encoder never writes one").
 - Evidence: [confirmed: a check case did, run `20261027-065659-33e5`; …] (R2); [confirmed: code `0x43cd00`, `0x43cde0`, `reimpl/src/rle16.cpp`; VM] (R5's remap helpers); [confirmed: code `0x571ff0`–`0x573440` (the row helpers), `reimpl/src/simple_warp.cpp`; VM] (simple warp, until 2026-10-29 [observed in the code]). Source: section 9, "Batch R2", "Batch R5", "The last effects: …"; `reimpl/src/rle16.cpp`.
 - Fix: yes. Editor: yes, for model or sequence import (no zero-length codes, rows adding up to the width).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: 800×600, 8 bit, `Cursors/Pointer.seq` with zero-length literals and Black Bias]: access violation at `0x434078` (`Span8_ModeTable_Copy`) under `Rle8_DrawFull_BlackBias`.
 
 **2.20 Amplify Light with an edge block calls address 0** — Amplify Light's RLE drawers
 - What: "Amplify registers no edge spans (its tables `0x6b70f0`/`0x6b76f0` are 0) and its drawers call address 0 for an edge block". "The game's light sprites have no edge block."
@@ -267,12 +282,14 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: "slot 15 reads the frame's byte into the stack slot of its file argument; when the file ends there, the byte left is the file pointer's low byte, so a short file goes on creating frames".
 - Evidence: [confirmed: code; VM]. Source: section 9, "Effects and text: …".
 - Fix: yes. Editor: yes, if it writes `.seq16` caches (complete files).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: `Fire Left.seq16` of the main menu cut inside a frame, two cuts]: the box "Fatal Error loading a frame" ("The *.frm file is corrupt, change the FRAME_FILE_VERSION number."); the game does not go on with the partial sequence.
 
 **2.22 Fonts: text wrapping hangs** — the wrap layout `0x4a7010`/`0x4a7110`; the word-wrapped text `0x4a6790`, `0x4a68b0`, `0x4a6ae0`
 - What: the wrap layout "hangs when the wrap width is narrower than a word (the original as well)"; the paragraph functions: "When nothing fits on the first line and the following lines are wider, … an empty rest never ends (in the original too …)".
 - When: a text overlay or label with a wrap width below the widest word (e.g. "Text Wrapping Width" of `CFrameOverlayTextOverlay`, default 0x80).
 - Evidence: [confirmed: code `0x4a7010`, `0x4a7110`, `reimpl/src/text_rest4a.cpp`; VM] (wrap layout); [confirmed: code `0x4a6790`, `0x4a68b0`, `0x4a6ae0`, `reimpl/src/font_layout.cpp`; VM] (word wrap, until 2026-10-29 [observed in the code]). Source: section 9, "The window toolkit", "Effects and text: …".
 - Fix: yes. Editor: yes (wrap widths at least the widest word).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a `Local.txt` that turns an objective's status fallback into blanks, the Load screen's "Mission Objs" tab of a save with a mission]: the main thread stays in `CFont::DrawParagraph` `0x4a68b0` / `CFont::BreakLine`, in all samples.
 
 **2.23 The glyph lookup accepts one glyph past the last** — the fonts' measuring code
 - What: "The glyph lookup of the measuring code compares the index with last − first + 1 (one past the last glyph), the drawing with the frame count."
@@ -284,16 +301,19 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: "the combo box's init divides by the font height / 5 (a font lower than 5 pixels …)".
 - Evidence: [confirmed: VM runs of the first versions of the checks …] (the paragraph). Source: section 9, "List boxes, combo boxes, …".
 - Fix: yes. Editor: no (fonts, not levels).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: `Gold Editor`'s height patched to 3, Multi-Player opened]: divide by zero at `0x4081b0` (`ComboBox::Init`).
 
 **2.25 The mini map of a level in an archive** — `Map_LoadMiniMap` `0x4ece20`
 - What: "If neither the image loads nor the `.tga` test passes (a level only in an archive without the `.tga`), the game ends with 'Fatal Error loading Mini-Map image'." A deliberate check; a level on the disk always qualifies for the rebuild.
 - Evidence: [confirmed 2026-10-28: code …; verified 2026-10-28, `/Original`, `Test/MMNoTga`]. Source: `zax-formats/docs/FORMATS.md` 5, mini map; section 10, "Batch C5".
 - Fix: no (deliberate; a fix could rebuild into the cache only). Editor: yes (a level packed into an archive needs its mini map image).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: a level only in a `.RED` (a stored zip in the game folder, without the `.tga`)]: the "Fatal Error loading Mini-Map image" box during "Layer Loading".
 
 **2.26 TGA files** — `CFrame::LoadTga` `0x4a9d70`, `ImageFile_Read` `0x58c6f0`
 - What: `CFrame::LoadTga` "ends the game on a recursive load or an uncompressed TGA that is not on disk"; `ImageFile_Read` "returns at a frame depth other than 8, 16, 24 and 32 without freeing its RLE row buffer"; overflowing RLE rows reach the "corrupt TGA" message box (the checks keep them out: "RLE rows never overflow (that ends the game)").
 - Evidence: [confirmed: code `0x4a9d70`, `0x58c6f0`, `reimpl/src/image_lo4.cpp`, `reimpl/src/image_file.cpp`; VM] (until 2026-10-29 partly [observed in the code]). Source: section 9, "Phase 4 remains, band C" and "Phase 4 leftovers".
 - Fix: yes. Editor: yes, for TGA images of mods (compressed TGAs only inside archives).
+- A level whose ground names a TGA of `Data/Textures` [verified 2026-11-09, `/Original`, x86 VM: a valid TGA named as a ground texture]: access violation reading address 0 at `0x5414b9` (`CPlasmaTileMap_MapBands`, while the tile is built), at load. Why the tile is empty there is not analysed.
 
 **2.27 Filter 10 overflows the stack** — `0x4b2b50` (filter 10's Apply: an 8-bit frame's palette from a colour histogram)
 - What: it "keeps a 1 MB colour histogram (2^18 dwords, 6 bits per channel) on the stack (`_chkstk` 0x100000), as much as the exe's whole stack reserve …: it overflows the main thread's stack whenever it runs". The reimplementation keeps the histogram on the heap.
@@ -308,11 +328,13 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: an action or AI whose target name does not resolve, an empty required field, a wrong class of target.
 - Evidence: [confirmed: code; checked] for most of the sections. Source: section 8 ("Behaviour of the action classes 0x4c0000–0x4cafff …", "The game's own actions …", "The task, generator, go-to and turret AIs …", "The particle AIs …", "The non-interactive sequences …", "Phase 3 remains, band D").
 - Fix: yes (skip and report). Editor: yes (reference fields must resolve, `zax-formats/zaxtools/links.py`; required fields not empty).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM]: `CTenaciousInvestigateAI` on a part that is not animated (near the player): access violation at `0x43039e` (`CEntityBehaviorMoveToPos::Begin`, called from `0x58c615`); a `CGenericParticleSystemAI` whose model makes no projectile: access violation reading `0x10c` at `0x52e85f` (`CGenericParticleSystemAI::Update`).
 
 **2.29 A shield AI on a non-character ends the game** — `CShieldAI::FindItem` `0x56d7d0` and the item slots
 - What: they "read the character's inventory without a test (a shield AI on a non-character would end the game)"; `0x56da70` reads "address 8 when the damage type has no loaded record".
 - Evidence: [confirmed: code `0x56d7d0`, `0x56da70`, `reimpl/src/ai_shield.cpp`; VM]. Source: section 8, "The skeleton AI, the shields, …".
 - Fix: yes. Editor: yes (`CShieldAI` only on characters).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: `CShieldAI` on a moving `CEntityMovable` near the start]: access violation at `0x4267e0` (`LayerPart_GetInventory` with a null part) from `0x56d7e2` (`CShieldAI::FindItem`) from `CShieldAI::Collide`.
 
 **2.30 A pickup whose item refuses and has no alternate** — `CPickupAI`
 - What: "`CPickupAI`'s pickup reads the alternate item without a test when the item refuses (a crash in the exe when there is none)".
@@ -323,11 +345,13 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: "With 'Random' and only one point to choose from (the polygon's count - 1, less one with 'Ignore last point', equal to 1) while at point 0, the loop that wants another point never ends (in the exe too; no level of the checks has one)."
 - Evidence: [confirmed: code `0x53c8d0` (`CPatrolPathAI::NextPoint`), `reimpl/src/ai_patrol.cpp`; VM]. Source: section 8, "The patrol, pickup and player control AIs".
 - Fix: yes. Editor: yes (a "Random" path needs more than one point to choose).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: `Order=Random`, two polygon points, the path at the walker's own position in an empty level]: the main thread stays in `Random_Below` `0x55c470` under `CPatrolPathAI::NextPoint` (samples).
 
 **2.32 A NaN time hangs the generator and the repeat timer** — `CGeneratorAI`, `CRepeatTimerTriggerAI`
 - What: the generator's "count-down never ends for NaN seconds or a NaN time (in the exe too)"; the repeat timer adds its delay "until it is above 0 again (for ever with NaN times, as in the exe)".
 - Evidence: [confirmed; checked]. Source: section 8, "The task, generator, …"; `reimpl/src/ai_triggers.cpp`.
 - Fix: yes. Editor: yes (time fields finite).
+- From text the times cannot become NaN through the limited fields [confirmed 2026-11-09: code `0x54ef30` (`CFieldText::FloatFromText`), field registrations in `reimpl/src/ai_classes.cpp`, `ai_tasks.cpp`]: `Delay Between Actions` of `CRepeatTimerTriggerAI` is limited to 1/60..999999, `Delay Between Spawns` of `CGeneratorAI` to 0..999999, and an unordered compare takes the "below the minimum" branch, so a NaN value gets the minimum. The unlimited time fields (`Seconds Till Next Execute`, `Time Till Next Generate`) were not tested.
 
 **2.33 A light beam touching a part that is no `CEntityBase`** — `CLightBeamAI::Collide` `0x4fe5f0`
 - What: the collision "reads the part's model and owner without a test when the part is not a CEntityBase, and uses the player's damage when the other has any flags and either flag word `0x6c29bc`/`0x6c29a0` is not 0"; "`CLightBeamAI`'s collision with a part that is not a CEntityBase ends the game in the original too".
@@ -343,6 +367,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - What: "item categories (a 'Red Flag' or 'Blue Flag' category ends the game with 'Fatal error')". A deliberate check.
 - Evidence: [confirmed: code; verified in the game] (section paragraph). Source: section 7, "The rest of the world class: …".
 - Fix: no (deliberate). Editor: yes, for mods that add categories.
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM: `Data/Inventory/Item Types/Red Flag.txt` beside the original files]: the "Fatal error" box from `World::LoadGameData`.
 
 ### Data packaging and settings
 
@@ -351,6 +376,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - When: mod archives (`*.zip` below the game folder, `*.RED`) and file names in the data folders.
 - Evidence: [confirmed: code `0x5c2240`, `0x4a0c40`, `reimpl/src/zip_archive.cpp`; `0x4a4840`, `0x4a1150`, `reimpl/src/file_search.cpp`; VM]. Source: section 6, "File search, file spec and the archive folders", "Zip archives".
 - Fix: yes for the uninitialised index and the comment; no for the deliberate fatal checks. Editor: yes (archives stored uncompressed without a comment; no `~` in file names).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM]: `a~b.RED` in the game folder: the "Illegal file name" box (tilde) at start; a `.RED` with a 92-character name: the box "more that 79 characters long"; a deflated entry (`deflate.RED`): the "Compressed Zip File Found" box; an archive with a comment (`comment.RED`, level inside): access violation reading `0x19c` at `0x4e7bf0` (`CLayerSaveData::MusicMix`; the level in the archive was not found [assumption]); one entry (`one.RED`): access violation at `0x5c2d81` (`ZipDir_Find`) on the uninitialised index, at start.
 
 **2.37 Unsupported resolutions crash the game** — `/ScreenWidth`, `/ScreenHeight`, `/ScreenBitDepth`; the video dialog; `ScreenFrame_SetMode`
 - What: "only 640×480 or 800×600 and 8 or 16 bit, other values crash the game [verified: VM]"; "a refused display mode in the video dialog's destructor ends the game ('Couldn't set resolution')"; the screen frame: 24 bits are tried as 32 when the mode fails, "a second failure ends the game".
@@ -358,6 +384,7 @@ The reimplementation (`reimpl/`, `Zax-Reimpl.dll`) reproduces every one of these
 - 24 and 32 bits (2026-11-01, `docs/DECOMPILATION.md` 13, "Batch hang-32bit"): no crash and no hang but a fatal message box (`ShowErrorBox` `0x4d24c0`, `MessageBoxA` owned by the full-screen window, so hidden behind the DirectDraw surface; `exit(-1)` after its OK). The image, model and sequence lists take their file extension from the display depth (`Sequence_Extension` `0x56b2b0`, `CFrame_FileExtension` `0x4a8980`, `CModel_FileExtension` `0x516a20`, `Sequence_CacheFileName` `0x56b780`, `CFrame::FileName` `0x4a9900`, `CModel_FileName` `0x516da0`), and the shipped data has only the 8- and 16-bit caches and no sources, so at 24/32 bits every list is empty and `Rules.txt`'s font "Gold Editor" ends the game in "Load Game Data" ("Fatal Not Found Error", `NamedList_FindOrFail` `0x591fc0`, 2.7). On the XP VM the 32-bit mode set fails first ("Couldn't set resolution", `Display_Init` `0x590ce0`). Also: when 24 bits fail and 32 are set, `Display_Init` still tells the application 24 (`App::Set24` `0x4ce500` with the asked depth) while the screen frame is 32 bits, so the frames are made in the wrong format; and the ground's band mapper `CPlasmaTileMap_MapBands` `0x541250` has no 32-bit branch (32-bit ground tiles are never written).
 - Evidence (24/32 bits): [verified 2026-11-01: VM, `/Original`, main thread samples (`[Reimpl] SampleAfterMs`) and screenshots, x86 `20261101-214345-8c2f` (24), `-3463` (32), ARM `20261101-214719-d817` (32), XP `20261101-214720-f685` (32); the archives' listings of all six editions]; [confirmed: code] (the extensions, the retry's depth, the band mapper); the sheared picture at 24 bits with the switch below [verified: VM, `20261101-215217-b27e`], its cause [assumption: the x86 driver has no 24-bit mode, so the retry took 32].
 - Fix: yes (phase 7/8: other resolutions). For 24/32 bits: the port keeps the 16-bit frame pipeline and converts the finished frame at presentation; Zax-Reimpl's opt-in `[Reimpl] TrueColorData16=1` (load the 16-bit caches at 24/32 bits) reaches the level but the picture stays unusable (black at 32 bits, garbage at 24), so it is a diagnosis switch, not a fix. Editor: no (the launcher offers only the working values).
+- Seen in the game [verified 2026-11-09, `/Original`, x86 VM]: `/ScreenWidth 1024 /ScreenHeight 768` and `/ScreenBitDepth 12`: the "FATAL ERROR!" box "Couldn't set resolution"; `/ScreenBitDepth 24`: the `Gold Editor` not-found box (2.7) as described above.
 
 **2.38 A network packet ending in 0xff loops for ever** — `NetPacket_ReadBlock` `0x5200d0`
 - What: "a packet ending in 0xff makes ReadBlock loop for ever (as in the original)".
