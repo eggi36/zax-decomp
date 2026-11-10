@@ -5594,7 +5594,7 @@ In `PlayLooped_Update` the frame times −1 and in `TakeDamage` the second facto
 
 ### A replay asks a voice's length while its timer callback runs [verified 2026-11-06, VM (x86)]
 
-Ported from `zax-redone`'s batch `newgame` (its `docs/STEP2_PLAN.md`, commit `c5b434f`), where `g_newgame` (gaps-menu) differed twice on a loaded VM (`20261104-164943-3ec0`: `DIVERGED: the game calls QueryPerformanceCounter (8 bytes), the recording has Stream_IsPlaying (0 bytes) at frame 1808`). The DLL's replay has the same race; the change is in the replay alone (`reimpl/src/replay.cpp`), the game's code is unchanged.
+Ported from `zax-redone`'s batch `newgame` (its `docs/STEP2_PLAN.md`, commit `e9ae7b9`), where `g_newgame` (gaps-menu) differed twice on a loaded VM (`20261104-164943-3ec0`: `DIVERGED: the game calls QueryPerformanceCounter (8 bytes), the recording has Stream_IsPlaying (0 bytes) at frame 1808`). The DLL's replay has the same race; the change is in the replay alone (`reimpl/src/replay.cpp`), the game's code is unchanged.
 
 **Cause** [verified by the control below]: `Stream_Seconds` (`0x5875e0`) answers 0.0 (`0x5ebed0`) while the stream's timer callback runs (+0xe). `Voice_Play` (`0x595be0`) asks it right after `CThreadedStream::Play` has started the timer (50 ms); `DialogueWindow_StartLine` (`0x47cfa0`) takes a voice under 0.1 s (`0x5f14ec`) as none, so the line scrolls at the options' speed and `DialogueWindow_Update` (`0x47c810`) does not ask `Voice_IsPlaying` (`0x595bd0`): the main thread's calls change. A race of the real clock, in the original too, lost only when the main thread is held past the timer's first period.
 
@@ -5608,7 +5608,7 @@ Ported from `zax-redone`'s batch `newgame` (its `docs/STEP2_PLAN.md`, commit `c5
 
 ### StartGameInfoReader::Read's response buffer one byte short [verified 2026-11-06, VM (x86)]
 
-Reported by `zax-redone`'s batch `p2net` (its `docs/STEP2_PLAN.md`, commit `f31cb6e`): on Apple's arm64 every LAN client side loaded the first game type ("Capture The Flag") instead of the host's, because the byte past the buffer was the low byte of `token`, which became 0.
+Reported by `zax-redone`'s batch `p2net` (its `docs/STEP2_PLAN.md`, commit `4357626`): on Apple's arm64 every LAN client side loaded the first game type ("Capture The Flag") instead of the host's, because the byte past the buffer was the low byte of `token`, which became 0.
 
 **The exe's frame** [confirmed: code `0x5bce30`–`0x5bcf59`]: `sub esp, 0x50`, then `push esi`, `push edi`; the token goes to `[esp + 8]` (frame offset 0, `lea eax, [esp]` before the pushes), `gcd_compute_response` (`0x5c9960`) gets `lea ecx, [esp + 0xc]` (frame offset 4) as its output, and nothing else lives in the frame: the CD key's ZString is at `[esp + 0x5c]`, the argument's slot (the packet pointer was already loaded into `esi`), and `add esp, 0x50` ends it. So the response has 0x4c bytes, from offset 4 to the return address. `gcd_compute_response` writes 73 bytes [confirmed: code, `reimpl/src/gamespy_gcd.cpp`]: MD5 of the key as 32 hex characters, `"%.8x"` of the random number (8), MD5 of key, number and challenge (32) and the end; the error path ("CD Key or challenge too long") 29.
 
