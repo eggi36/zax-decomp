@@ -1089,6 +1089,21 @@ class Resolver:
         files = {f for _, f, _ in self.hook_names.get(name, [])}
         return any(self.src.inc_owner.get(d.file, d.file) in files or d.file in files for d in defs)
 
+    def slot_call(self, name):
+        """a vtable call helper: vcall, or a function whose second parameter `slot` indexes the object's vtable
+        (`[slot]` in its body), e.g. the COM calls' com(o, slot, ...)"""
+        key = ('s', name)
+        if key not in self._memo:
+            r = name in ('vcall', 'vc')
+            for d in self.src.defs.get(name, []):
+                if len(d.params) >= 2 and d.params[1] == 'slot':
+                    body = d.toks[d.body[0]:d.body[1]]
+                    if any(body[k].t == '[' and body[k + 1].t == 'slot' and body[k + 2].t == ']'
+                           for k in range(len(body) - 2)):
+                        r = True
+            self._memo[key] = r
+        return self._memo[key]
+
     def unalias(self, qual, rel):
         if not qual or qual == '.':
             return qual
@@ -1476,7 +1491,7 @@ class Collector:
                     qual = toks[q].t + '::' + qual
             elif prev == '::':
                 qual = None   # ::name, the global one
-            if name in ('vcall', 'vc') and call_open is not None:
+            if call_open is not None and res.slot_call(name):
                 e = match_close(toks, call_open, '(', ')')
                 args = split_args(toks, call_open + 1, e)
                 if len(args) >= 2:
