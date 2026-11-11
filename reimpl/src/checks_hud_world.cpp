@@ -15,7 +15,8 @@
 //  - The game types' HUD slot 42 on fake game type objects (the real fonts and images that are loaded,
 //    positions and justifications), the net player and the scoreboard stand-ins (ZaxNet_PlayerAt 0x5ba810,
 //    Scoreboard_Get 0x566a80) with fake players (team, score) and scoreboards (teams with scores, rows with
-//    names and frags in the layout the exe's accessors read).
+//    names and frags in the layout the exe's accessors read); up to four teams, so Capture the Flag's walk
+//    past its two team names reaches its return address and the scoreboard (not the crash at the fifth).
 #include "checks_hud_common.h"
 #include "x87.h"
 
@@ -336,7 +337,12 @@ void check_game_types(Tally &t)
         *reinterpret_cast<short *>(g_player + 0xf6) = rnd(3) ? (short)rnd(500) : (short)(random() >> 16);
         // the scoreboard: teams (+0x24, +0x28) and rows (+4 data, +8 count, +0x14 the sorted order)
         memset(g_board, 0, sizeof g_board);
-        const DWORD nteams = rnd(3), nrows = rnd(7);
+        // 0-4 teams: Capture the Flag reads a third team's name from its return address (here the call below, the
+        // same on both sides) and a fourth's from the scoreboard (its first dwords as text: +0 four non-zero
+        // bytes, then the row pointer and count). A fifth team would read the address 4 and crash, in the
+        // original as in the reimplementation; that case is left out.
+        const DWORD nteams = rnd(5), nrows = rnd(7);
+        dw(g_board, 0) = random() | 0x01010101;
         for (DWORD i = 0; i < 4; i++) {
             dw(g_teams[i], 4) = rnd(30);
             g_team_ptrs[i] = rnd(5) ? ptrv(g_teams[i]) : 0;

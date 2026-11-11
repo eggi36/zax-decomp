@@ -671,7 +671,7 @@ void grow(StackArray &a, FnKey reserve)
 // character of +0x318 (CEntityCharacter or null) gets slot 41 (0, 0), slot 104 (character, layer i) and its
 // slot 62 (layer i) - the layer array has one entry, the original reads past it for more characters; the
 // layer kept gets slot 78 (layer, -1); the mode +0x14 2/3/4 touches, flushes or expires the current layer;
-// the other map list runs for the layer; slot 83 (+0x314, names, points, layers); the arrays freed. al 1.
+// the other map list runs for the layer; slot 83 (+0x314, names, points, layers); the arrays destroyed as the exe's inlined destructors do it. al 1.
 DWORD THISCALL App_SwitchMap(BYTE *self, BYTE *reloc)
 {
     StackArray points = {vt(0x602f9c), 0, 0, 0}, layers = {vt(0x5f7b88), 0, 0, 0}, names = {vt(0x5fa6a4), 0, 0, 0};
@@ -732,6 +732,12 @@ DWORD THISCALL App_SwitchMap(BYTE *self, BYTE *reloc)
     BYTE *target = fn<BYTE *(THISCALL *)(void *, const char *)>(0x4f4d70)(self, n1);
     fn<DWORD(THISCALL *)(void *, void *, const char *)>(0x41f6c0)(pt(self, 0x354), target, n2);
     vcall<DWORD>(self, 83, self + 0x314, &names, &points, &layers);
+    // The arrays' inlined destructors, with their stores into the dying locals as the exe makes them
+    // [verified 2026-11-11: 0x59b734-0x59b7af]: each array's vtable set back to its class's (names 0x5fa6a4 again)
+    // or its base class's (layers 0x5f7b94, points 0x602f90), the block freed, data, count and capacity cleared
+    // (points' not: the function returns). Volatile, so that the compiler keeps the stores nothing reads.
+    const auto put = [](DWORD &d, DWORD v) { *static_cast<volatile DWORD *>(&d) = v; };
+    put(names.vftable, vt(0x5fa6a4));   // 0x59b734
     if (names.data) {
         DWORD *block = at<DWORD *>(names.data) - 1;
         const DWORD n = *block;
@@ -739,10 +745,19 @@ DWORD THISCALL App_SwitchMap(BYTE *self, BYTE *reloc)
             for (DWORD i = n; i; i--)
                 fn<DWORD(THISCALL *)(DWORD)>(0x4defd0)(names.data + (i - 1) * 4);
         crt_delete(block);
+        put(names.data, 0);
+        put(names.capacity, 0);
     }
+    put(names.count, 0);
+    put(layers.vftable, vt(0x5f7b94));   // 0x59b778
     DWORD r = 0;
-    if (layers.data)
+    if (layers.data) {
         r = fn<DWORD(THISCALL *)(void *, DWORD, DWORD)>(0x5065e0)(pool_get(), layers.data, layers.capacity * 4);
+        put(layers.data, 0);
+        put(layers.capacity, 0);
+    }
+    put(layers.count, 0);
+    put(points.vftable, vt(0x602f90));   // 0x59b7af
     if (points.data)
         r = fn<DWORD(THISCALL *)(void *, DWORD, DWORD)>(0x5065e0)(pool_get(), points.data, points.capacity * 8);
     return with_al(r, 1);

@@ -46,7 +46,7 @@
 // The game types' HUD (frame, x, y) [confirmed: code; VM]: Capture the Flag: the player's team flag
 // (+0xe8 or +0xec by the player's +0x14, the image list 0x6c0540) at +0xe0/+0xe4, then per team "%s = "
 // (right justified) and the score (+4 of the team) in the font +0xd4 at +0xd8/+0xdc, the team names from
-// the two registered strings 0x6bd124, 0x6bd114 (a third team would read past them, as in the original),
+// the two registered strings 0x6bd124, 0x6bd114 (a third team reads on past them, as in the original: below),
 // then the player's own score (+0xf6) after 0x6bd11c; death match: the player's score centred in the font
 // +0xc8 at +0xcc/+0xd0, then the first +0xe0 rows of the scoreboard (rank, name, frags; columns +0xe8..
 // +0xfc with their justifications) in the font +0xd4 at +0xd8/+0xdc, rows the font's line height plus
@@ -470,33 +470,66 @@ void THISCALL ZaxWorld_ShowStatusText(BYTE *w, const void *text, float fraction,
     }
 }
 
+extern "C" void *_AddressOfReturnAddress();   // the compiler's intrinsic (MSVC's <intrin.h>)
+
 namespace {
 BYTE *net_player() { return zax::fn<BYTE *(__fastcall *)(DWORD)>(0x5ba810)(*glob<DWORD *>(0x5fe8f8)); }
 }  // namespace
 
 // 0x4698f0 (frame, x, y)
-void THISCALL CaptureTheFlag_DrawHud(BYTE *gt, void *frame, int x, int y)
+//
+// The team names' walk past its end, as the exe does it [verified 2026-11-11: the instructions 0x4698f0-0x469b6c].
+// The exe's frame after its prologue (sub esp, 0x14; push ebx, ebp, esi, edi): [esp + 0x10] the text, +0x14 the
+// player, +0x18 a scratch slot, +0x1c and +0x20 the two names (0x469a0a, 0x469a13), +0x24 the return address,
+// +0x28/+0x2c/+0x30 the arguments frame, x, y. After reading the arguments (frame stays in ebx) it reuses their
+// slots: +0x28 the scoreboard (0x469a1e), +0x2c the team index (0x469a22), +0x30 a pointer into the frame that
+// starts at the first name (0x469a37) and moves on by 4 per team, drawn or not (0x469ad0), without a bound. Per
+// team with a non-null TeamAt it formats "%s = " with the dword the pointer points to (0x469a5d). So team 0 and 1
+// get the names, team 2 the return address (the caller's code bytes as text), team 3 the scoreboard (its bytes as
+// text), team 4 the index itself (4: the format reads address 4 and the game crashes), team 5 the pointer itself
+// (the stack address's bytes, then the stack after it), team 6 on the caller's frame.
+// Here: the hook enters this function by a jump, so its return address and arguments lie where the exe's do;
+// _AddressOfReturnAddress() is the exe's [esp + 0x24]. The scoreboard, the index and the pointer are kept in the
+// argument slots as the exe keeps them (the arguments are read through the same pointer first and never used
+// after), the pointer holds the exe's value (the address of [esp + 0x1c] plus 4 per team), and a read through it
+// takes the two names from `names` (this frame cannot hold them right below the return address, which is where
+// the exe has them) and every later dword from the stack itself: the return address, the scoreboard, the index,
+// the pointer, the caller's frame - the same memory as the exe's.
+void THISCALL CaptureTheFlag_DrawHud(BYTE *gt, void *, int, int)
 {
+    volatile DWORD *const args = static_cast<volatile DWORD *>(_AddressOfReturnAddress());   // the exe's [esp + 0x24]
+    const DWORD names_at = (DWORD)(uintptr_t)args - 8;                                       // the exe's [esp + 0x1c]
     BYTE *p = net_player();
     BYTE *f = font(dw(gt, 0xd4));
     BYTE text[4];
     zs_ctor(text);
+    void *const frame = reinterpret_cast<void *>(args[1]);
+    const int x = (int)args[2], y = (int)args[3];
     BYTE *flag = record(glob_addr(IMAGES), glob_addr(IMAGE_RECORDS), glob_addr(IMAGE_COUNT), dw(p, 0x14) ? dw(gt, 0xec) : dw(gt, 0xe8));
     blit_at(frame, flag, (int)dw(gt, 0xe0) + x, (int)dw(gt, 0xe4) + y, glob_addr(COPY));
     const int tx = (int)dw(gt, 0xd8) + x;
     int ty = (int)dw(gt, 0xdc) + y;
-    // a third team would read past the two names (the original's stack after them)
-    const char *names[4] = {zs_c_str(glob<void *>(0x6bd124)), zs_c_str(glob<void *>(0x6bd114)), "", ""};
-    void *board = zax::fn<void *(__cdecl *)()>(0x566a80)();
-    for (DWORD i = 0; i < zax::fn<DWORD(THISCALL *)(void *)>(0x566cf0)(board); i++) {
-        void *team = zax::fn<void *(THISCALL *)(void *, DWORD)>(0x566d00)(board, i);
-        if (!team)
-            continue;
-        zs_format(text, glob<const char *>(0x60f5b4), names[i & 3]);
-        draw_text(f, frame, tx, ty, zs_c_str(text), 2, 0);
-        zs_format(text, glob<const char *>(0x60a5a0), zax::fn<DWORD(THISCALL *)(void *)>(0x5669d0)(team));
-        draw_text(f, frame, tx, ty, zs_c_str(text), 0, 0);
-        ty += (int)seq_height(f);
+    DWORD names[2];
+    names[0] = (DWORD)(uintptr_t)zs_c_str(glob<void *>(0x6bd124));
+    names[1] = (DWORD)(uintptr_t)zs_c_str(glob<void *>(0x6bd114));
+    args[1] = (DWORD)(uintptr_t)zax::fn<void *(__cdecl *)()>(0x566a80)();   // [esp + 0x28] the scoreboard
+    args[2] = 0;                                                              // [esp + 0x2c] the team index
+    if (zax::fn<DWORD(THISCALL *)(void *)>(0x566cf0)(reinterpret_cast<void *>(args[1]))) {
+        args[3] = names_at;   // [esp + 0x30] the pointer, at the first name
+        do {
+            void *team = zax::fn<void *(THISCALL *)(void *, DWORD)>(0x566d00)(reinterpret_cast<void *>(args[1]), args[2]);
+            if (team) {
+                const DWORD at = args[3];
+                const DWORD name = at - names_at < 8 ? names[(at - names_at) >> 2] : *reinterpret_cast<const DWORD *>(at);
+                zs_format(text, glob<const char *>(0x60f5b4), reinterpret_cast<const char *>(name));
+                draw_text(f, frame, tx, ty, zs_c_str(text), 2, 0);
+                zs_format(text, glob<const char *>(0x60a5a0), zax::fn<DWORD(THISCALL *)(void *)>(0x5669d0)(team));
+                draw_text(f, frame, tx, ty, zs_c_str(text), 0, 0);
+                ty += (int)seq_height(f);
+            }
+            args[2] = args[2] + 1;
+            args[3] = args[3] + 4;
+        } while (args[2] < zax::fn<DWORD(THISCALL *)(void *)>(0x566cf0)(reinterpret_cast<void *>(args[1])));
     }
     zs_format(text, glob<const char *>(0x60f5b4), zs_c_str(glob<void *>(0x6bd11c)));
     draw_text(f, frame, tx, ty, zs_c_str(text), 2, 0);
