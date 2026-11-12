@@ -589,6 +589,11 @@ void delete_game_data(void *d) { original<Dtor1>(0x51a0d0)(d, 1); }
 unsigned g_part[2][2];   // the state hash after the game type and after the match states (for the log)
 const BYTE *g_case_object[2];
 
+// The cases without a match state (run_side): 1 null at +0x30, 2 an object of another class; the faults seen and
+// those that were not an access violation near 0
+int g_no_state;
+DWORD g_no_state_faults, g_no_state_bad;
+
 // One side of a case: the world from the seed, the function, the state afterwards
 DWORD run_side(Fn fn, CMultiPlayerGameType *t, bool real, DWORD seed)
 {
@@ -624,6 +629,33 @@ DWORD run_side(Fn fn, CMultiPlayerGameType *t, bool real, DWORD seed)
     if (g_side == 0)
         hooks_out();
     DWORD r = 0;
+    if (g_no_state) {
+        // Without a match state (batch decomp-faithful2): +0x30 null or an object of another class (the game type
+        // itself, which IsKindOf refuses); the exe then reads or writes the field through null. The call through
+        // call_faulting: the exception's code, access kind and address are compared (not the instruction's
+        // address, which is the exe's on one side and ours on the other).
+        field<void *>(g_a.session, 0x30) = g_no_state == 1 ? nullptr : static_cast<void *>(t);
+        DWORD addr = 0, args[2] = {0, 0}, n = 0;
+        switch (fn) {
+        case F_UPDATE: addr = 0x51c310, args[0] = bits(f), n = 1; break;
+        case F_SCORE: addr = 0x51bb90, args[0] = a1 % (NTEAM + 1), args[1] = a2, n = 2; break;
+        case F_TIME: addr = 0x51c1f0; break;
+        case F_SET_TIME: addr = 0x51c270, args[0] = bits(f), n = 1; break;
+        case F_END: addr = 0x51c650; break;
+        default: addr = 0x51c800; break;   // F_READY
+        }
+        Fault fault;
+        r = call_faulting(fault, at<void *>(addr), ptrv(t), args, n);
+        if (fn == F_TIME && !fault.code)
+            __asm__ volatile("fstp %%st(0)" ::: "st");   // the match time it returned
+        st(fault.code);
+        st(fault.kind);
+        st(fault.address);
+        g_no_state_faults += fault.code != 0;
+        g_no_state_bad += fault.code && (fault.code != 0xc0000005u || fault.address >= 0x18);
+        field<CMultiPlayerGameData *>(g_a.session, 0x30) = d;
+        fn = NFN;   // nothing more to call
+    }
     switch (fn) {
     case F_START: r = at<DWORD(THISCALL *)(void *)>(0x51c010)(t); break;
     case F_UPDATE: at<void(THISCALL *)(void *, float)>(0x51c310)(t, f); break;
@@ -1009,7 +1041,8 @@ ZAX_CHECKS(mp_game_type)
     (void)cls;
     (void)n;
     Tally slots{"Multiplayer game type slots"}, objects{"Multiplayer game type objects"},
-        classes{"Multiplayer game type classes"}, real{"Multiplayer game type real data"};
+        classes{"Multiplayer game type classes"}, real{"Multiplayer game type real data"},
+        no_state{"Multiplayer game type without a match state (the fault near address 0)"};
     if (!hook_sites_fit("mp_game_type", hooks_mp_game_type(nullptr), MAX_SITES))
         return;
     for (int i = 0; i < NPLAYER; i++) {
@@ -1026,12 +1059,26 @@ ZAX_CHECKS(mp_game_type)
             for (int c = 0; c < cases; c++)
                 run_case(slots, (Fn)fn, false, 0, 0x10000 * (DWORD)(fn + 1) + (DWORD)c);
         }
+        // Without a match state: the same read or write near address 0 on both sides
+        const Fn users[] = {F_UPDATE, F_SCORE, F_TIME, F_SET_TIME, F_END, F_READY};
+        g_no_state_faults = g_no_state_bad = 0;
+        for (Fn fn : users)
+            for (int c = 0; c < 20; c++) {
+                g_no_state = 1 + c % 2;
+                run_case(no_state, fn, false, 0, 0x800000 + 0x10000 * (DWORD)fn + (DWORD)c);
+                g_no_state = 0;
+            }
+        char d[120];
+        wsprintfA(d, "[faults %u, not an access violation below 0x18: %u]", g_no_state_faults, g_no_state_bad);
+        no_state.check(g_no_state_faults > 0 && g_no_state_bad == 0, "faults", d);
+        log("  without a match state: %s", d);
         for (int side = 0; side < 2; side++) {
             g_obj[side]->taken_lead = g_obj[side]->lost_lead = g_obj[side]->tied_lead = nullptr;
             vcall<void *>(g_obj[side], 1, 1);
         }
     }
     slots.report();
+    no_state.report();
     test_objects(objects);
     objects.report();
     test_classes(classes, real);

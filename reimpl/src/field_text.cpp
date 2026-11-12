@@ -1,6 +1,7 @@
 // Field values as text and back (see field_text.h): slots 16 and 19 of the simple field kinds and the
 // colour setter they use.
 #include "field_text.h"
+#include "exe_frame.h"
 
 namespace zax {
 
@@ -328,13 +329,19 @@ void THISCALL CFieldText::ColorToText(CColorFieldDesc *self, BYTE *object, ZStri
     format(out, FMT_DDD, (DWORD)c[6], (DWORD)c[5], (DWORD)c[4]);
 }
 
-// 0x46df60
-DWORD THISCALL CFieldText::ColorFromText(CColorFieldDesc *self, BYTE *object, const char *text, DWORD)
+// 0x46df60 (thiscall; object, text, unused), ret 0xc, in the exe's frame (exe_frame.h) [verified 2026-11-12: the
+// instructions 0x46df60-0x46dfad]: `sub esp, 8`, red at [esp + 4], green at [esp + 0], blue in the text argument's
+// slot ([esp + 0x10], the text pointer until sscanf writes it). sscanf leaves what it does not convert, so a text
+// without red or green leaves whatever the stack held at those two addresses in the colour, as in the original.
+extern "C" DWORD __cdecl zax_color_from_text(CColorFieldDesc *self, BYTE *object, const char *text, DWORD, BYTE *frame)
 {
-    DWORD r = 0, g = 0, b = addr(text);
-    crt_sscanf(text, FMT_DDD, &r, &g, &b);
-    return color_set_rgba(reinterpret_cast<FieldColor *>(object + self->offset), r, g, b, 0xff);
+    DWORD *const r = reinterpret_cast<DWORD *>(frame + 4);
+    DWORD *const g = reinterpret_cast<DWORD *>(frame);
+    DWORD *const b = reinterpret_cast<DWORD *>(frame + 8 + 8);   // the text argument's slot
+    crt_sscanf(text, FMT_DDD, r, g, b);
+    return color_set_rgba(reinterpret_cast<FieldColor *>(object + self->offset), *r, *g, *b, 0xff);
 }
+ZAX_EXE_FRAME_ENTRY(zax_color_from_text_entry, zax_color_from_text, 8, 3, 0xc)
 
 // 0x53f080
 DWORD THISCALL CFieldText::ColorSetRGBA(FieldColor *c, DWORD r, DWORD g, DWORD b, DWORD a)
@@ -372,7 +379,7 @@ ZAX_HOOKS(field_text)
         {0x5455a0, ptr(&CFieldText::IntPointToText), "CFieldText::IntPointToText", 7, {0x8b, 0x41, 0x10, 0x8b, 0x4c, 0x24, 0x04, 0x03}},
         {0x5455d0, ptr(&CFieldText::IntPointFromText), "CFieldText::IntPointFromText", 5, {0x51, 0x8b, 0x54, 0x24, 0x0c, 0x56, 0x8b, 0xf1}},
         {0x46dee0, ptr(&CFieldText::ColorToText), "CFieldText::ColorToText", 6, {0x83, 0xec, 0x10, 0x8b, 0x41, 0x10, 0x8b, 0x4c}},
-        {0x46df60, ptr(&CFieldText::ColorFromText), "CFieldText::ColorFromText", 7, {0x83, 0xec, 0x08, 0x8d, 0x44, 0x24, 0x10, 0x8d}},
+        {0x46df60, (void *)&zax_color_from_text_entry, "CFieldText::ColorFromText", 7, {0x83, 0xec, 0x08, 0x8d, 0x44, 0x24, 0x10, 0x8d}},
         {0x53f080, ptr(&CFieldText::ColorSetRGBA), "FieldColor_SetRGBA", 8, {0x8b, 0x44, 0x24, 0x0c, 0x8b, 0x54, 0x24, 0x08}},
     };
     return emit_hooks(out, list);

@@ -97,13 +97,22 @@ static CClassInfo *__cdecl GameType_ClassInfo()
     return v;
 }
 
-// The current match state: the application's slot 97, +0x30, if it is a CMultiPlayerGameData
+// The current match state: the application's slot 97, +0x30, if it is a CMultiPlayerGameData, else null. Every
+// user in the exe reads or writes the field through it without a test, so without a match state (or with an object
+// of another class there) the exe reads address 8 or 0x10, or writes 0x10, and the game ends with an access
+// violation [verified 2026-11-12: e.g. 0x51c25f-0x51c261 `xor esi, esi; fld qword ptr [esi + 0x10]`]. The empty
+// asm hides the null from the compiler, which otherwise takes the dereference as proof of a non-null pointer and
+// drops the null path (until 2026-11-12 it left out the null test and IsKindOf's answer and read the field of
+// whatever object was there; batch decomp-faithful2, docs/DECOMPILATION.md 16), so the same field access happens
+// at the same address near 0.
 static CMultiPlayerGameData *game_data()
 {
     void *o = *reinterpret_cast<void **>(vcall<BYTE *>(app(), 97) + 0x30);
-    if (!o)
-        return nullptr;
-    return obj_is_kind_of(o, game_data_class()) & 0xff ? static_cast<CMultiPlayerGameData *>(o) : nullptr;
+    CMultiPlayerGameData *d = nullptr;
+    if (o && (obj_is_kind_of(o, game_data_class()) & 0xff))
+        d = static_cast<CMultiPlayerGameData *>(o);
+    __asm__("" : "+r"(d));
+    return d;
 }
 
 // ---- CMultiPlayerGameData ------------------------------------------------------------------------------
@@ -523,7 +532,7 @@ DWORD THISCALL CMultiPlayerGameType::AssignTeam(BYTE *player)
 // 0x51d190: slot 46 with the second argument. eax: its.
 DWORD THISCALL CMultiPlayerGameType::Slot29(DWORD, DWORD entity, DWORD) { return vcall<DWORD>(this, 46, entity); }
 
-// 0x51c1f0: the match time (st0); without a match state the original reads address 0x10
+// 0x51c1f0: the match time (st0); without a match state it reads address 0x10, as the original
 double THISCALL CMultiPlayerGameType::MatchTime() { return game_data()->match_time; }
 
 // 0x51c270: sets the match time, except on the server (the net game's slot 12)

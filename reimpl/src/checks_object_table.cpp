@@ -242,6 +242,8 @@ const char *const LISTS[] = {
     "Referenced Objects\r\n{\r\n\t3\r\n\t\r\n\t0x10\r\n\r\n}\r\n",
 };
 char g_value[64];
+constexpr DWORD LOCATION_FILL = 16;
+DWORD g_location_fill[LOCATION_FILL];   // the stack below ReadLocationBinary's call (the cut-short cases)
 
 void test_read_location(Tally &t, int &n)
 {
@@ -296,6 +298,41 @@ void test_read_location(Tally &t, int &n)
                         loc == 0xffffffff ? 0xffffffff : 0, count * 7 + gap});
                 n++;
             }
+    // binary, cut short, in the exe's frame (batch decomp-faithful2): called through zax_call_stack with a fill of the
+    // case on both sides, so the dwords the stream does not hold are the fill's at the exe's addresses (after its
+    // `sub esp, 0x14`: the count at [esp + 0] = fill[5], the position [esp + 4] = fill[4], the ID [esp + 8] = fill[3]),
+    // the same on both sides; the count's dword set to 0-3 (the list gets that many), the position's to the
+    // stream's end or 0 (the exe's memory stream must not be read past its end: the test's own limit). With the
+    // location known the exe returns the caller's eax, here the fill's last dword. The cuts: after the header (no
+    // position), after the position (the list at the stream's end), after the magic (no count), after the count
+    // (no IDs), after one ID.
+    for (int cut = 0; cut < 5; cut++)
+        for (int k = 0; k < 6; k++) {
+            g_seed = 0x55c9b0u + (DWORD)(cut * 16 + k);
+            stack_pattern(g_location_fill, LOCATION_FILL, random());
+            g_location_fill[fill_index(0, 0x14, 0)] = random() % 4;
+            g_input.size = 0;
+            append_dword(g_input, 0x41d80000);
+            const DWORD p = g_input.size;
+            if (cut >= 1)
+                append_dword(g_input, p + 4);   // the list right after it (cut 1: the stream ends there)
+            if (cut >= 2)
+                append_dword(g_input, LIST_MAGIC);
+            if (cut >= 3)
+                append_dword(g_input, 2 + (DWORD)k % 2);
+            if (cut >= 4)
+                append_dword(g_input, IDS[k % 8]);
+            g_location_fill[fill_index(0, 0x14, 4)] = k % 3 == 0 ? 0 : g_input.size;
+            g_location = k == 5 ? 2u : 0xffffffffu;
+            g_format = 0;
+            g_mode = 0;
+            run(t, {"ObjectTable::ReadLocationBinary (cut short, stack pattern)", 0x55c9b0, 4, 0, &g_input, p, setup_located,
+                    [](DWORD a, CObjectWriter *w) {
+                        return zax_call_stack(at<void *>(a), ptrv(table_of(w)), nullptr, 0, g_location_fill, LOCATION_FILL);
+                    },
+                    nullptr, 0xffffffff, (unsigned)(cut * 16 + k)});
+            n++;
+        }
 }
 
 // ---- Finish and the list ---------------------------------------------------------------------------------

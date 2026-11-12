@@ -70,7 +70,7 @@ struct WorldLayer {
     static void THISCALL SendSimpleSoundAt(Layer *self, DWORD sound, void *part);          // 0x4ea880 (eax not reproduced)
     static void THISCALL SendSimpleSound(Layer *self, DWORD sound, const float *pos);      // 0x4ea8c0 (eax not reproduced)
     static DWORD THISCALL SendSoundAt(Layer *self, DWORD sound, void *part, DWORD mode, DWORD keep, DWORD channel);   // 0x4eaa60 (al)
-    static DWORD THISCALL SendSound(Layer *self, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD channel);   // 0x4eaab0 (al)
+    // 0x4eaab0 (al): world_update.cpp's zax_layer_send_sound_entry, in the exe's frame (exe_frame.h)
     static void THISCALL PlaySoundHere(Layer *self, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD channel);   // 0x4eaca0 (eax not reproduced)
     static DWORD THISCALL WritePosition(Layer *self, void *packet, const float *pos);      // 0x4eae90
     static BYTE *THISCALL ReadPosition(Layer *self, void *packet, float *pos, BYTE *ok);   // 0x4eaf80
@@ -78,7 +78,7 @@ struct WorldLayer {
 
 struct WorldSaveData {
     static void THISCALL FixEntityTypes(LayerSaveData *self);                              // 0x4e97c0 (eax not reproduced)
-    static DWORD THISCALL Bounce(LayerSaveData *self, void *mover, BounceResult *out, DWORD arg);   // 0x4e96c0 (al)
+    // 0x4e96c0 (al): world_update.cpp's zax_save_data_bounce_entry, in the exe's frame (exe_frame.h)
     static DWORD THISCALL SweepBounce(LayerSaveData *self, void *shape, float *pos, const BounceMotion *motion, BounceResult *out,
                                       void *hit_part, void *mover, DWORD a6, DWORD a7, DWORD a8);   // 0x4e91e0 (al)
 };

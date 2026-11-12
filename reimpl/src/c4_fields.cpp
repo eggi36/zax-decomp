@@ -30,6 +30,7 @@
 #include "exe_base.h"
 #include "init_list.h"
 #include "x87.h"
+#include "exe_frame.h"
 
 namespace zax {
 namespace {
@@ -247,14 +248,18 @@ DWORD THISCALL Color_WriteBinary(BYTE *self, BYTE *object, void *file)
     BYTE b[4] = {c[0], c[1], c[2], 0};
     return fb_write(file, b, 3);
 }
-// 0x46dfe0, slot 29: three bytes, then FieldColor_SetRGBA(b[2], b[1], b[0], 0xff). A short read leaves
-// the other bytes as they were on the stack (not reproduced; the checks read whole colours).
-DWORD THISCALL Color_ReadBinary(BYTE *self, BYTE *object, void *file)
+}  // namespace
+// 0x46dfe0, slot 29: three bytes, then FieldColor_SetRGBA(b[2], b[1], b[0], 0xff). In the exe's frame (exe_frame.h)
+// [verified 2026-11-12: the instructions 0x46dfe0-0x46e02f]: `sub esp, 8`, the three bytes read to [esp + 0]
+// (0x46dff1) and taken from [esp + 0], [esp + 1], [esp + 2] (0x46dff6-0x46e017). A short read leaves the other
+// bytes as the stack held them there, as in the original (batch decomp-faithful2; until then 0 here).
+extern "C" DWORD __cdecl zax_color_read_binary(BYTE *self, BYTE *object, void *file, BYTE *frame)
 {
-    BYTE b[8] = {};
-    fb_read(file, b, 3);
-    return with_al(fn<DWORD(THISCALL *)(void *, DWORD, DWORD, DWORD, DWORD)>(0x53f080)(object + dw(self, 0x10), b[2], b[1], b[0], 0xff), 1);
+    fb_read(file, frame, 3);
+    return with_al(fn<DWORD(THISCALL *)(void *, DWORD, DWORD, DWORD, DWORD)>(0x53f080)(object + dw(self, 0x10), frame[2], frame[1], frame[0], 0xff), 1);
 }
+ZAX_EXE_FRAME_ENTRY(zax_color_read_binary_entry, zax_color_read_binary, 8, 2, 8)
+namespace {
 // 0x46e040, slot 38: count colours of 0x10 bytes from operator new, each through FieldColor_Ctor
 BYTE *THISCALL Color_NewArray(BYTE *, DWORD n, DWORD, DWORD)
 {

@@ -463,11 +463,77 @@ void test_color_set()
     t.report();
 }
 
+// ColorField_FromText 0x46df60 on texts without red or green (batch decomp-faithful2): the stack below the call
+// filled with the case's pattern (zax_call_stack), so the exe's two uninitialised locals ([esp + 4] red, [esp + 0]
+// green after its `sub esp, 8`: the fill's dwords 4 and 5, below the three arguments
+// and the return address) hold the pattern on both sides. Compared: eax and the whole colour; also
+// that each side's red and green are the pattern's dwords there where the text has none (so the value really
+// comes from those two slots). A descriptor of our own: +0x10 the offset of the colour in the object.
+// Pixel16_FromRGB 0x433a10 replaced while these cases run: with its tables built (as in the game) it indexes them
+// with the channels, and a channel of stack garbage or a missing blue (the text pointer) reads far outside them and
+// ends the game, in the original as here. The stand-in records the three channels whole.
+unsigned g_pixel_rec;
+DWORD __fastcall rec_pixel16(DWORD r, DWORD g, DWORD b)
+{
+    const DWORD v[3] = {r, g, b};
+    g_pixel_rec = fnv(g_pixel_rec, v, 12);
+    return (r * 31 + g * 7 + b) & 0xffff;
+}
+void test_color_garbage()
+{
+    Tally t{"field text: ColorField_FromText without red or green (stack pattern)"};
+    CodePatch pixel;
+    patch_jump(pixel, 0x433a10, (void *)&rec_pixel16);
+    static const char *const texts[] = {"", "7", "7,", "x", "12,34", "-5,", ",5,6", "300", " ", "1,2,", "a,b,c", "40000"};
+    constexpr int NT = sizeof texts / sizeof texts[0];
+    alignas(4) BYTE desc[0x38];
+    memset(desc, 0, sizeof desc);
+    g_seed = 0x46df60;
+    for (int k = 0; k < scaled(240); k++) {
+        const char *text = texts[k % NT];
+        DWORD fill[STACK_FILL];
+        stack_pattern(fill, STACK_FILL, random());
+        const DWORD off = 4 * (random() % 4), unused = random();
+        *reinterpret_cast<DWORD *>(desc + 0x10) = off;
+        alignas(4) BYTE obj[2][0x20];
+        fill_random(obj[0], sizeof obj[0]);
+        memcpy(obj[1], obj[0], sizeof obj[0]);
+        DWORD r[2];
+        unsigned px[2];
+        for (int side = 0; side < 2; side++) {
+            const DWORD args[3] = {(DWORD)(uintptr_t)obj[side], (DWORD)(uintptr_t)text, unused};
+            const void *f = side ? at<void *>(0x46df60) : original<void *>(0x46df60);
+            g_pixel_rec = 2166136261u;
+            r[side] = zax_call_stack(f, (DWORD)(uintptr_t)desc, args, 3, fill, STACK_FILL);
+            px[side] = g_pixel_rec;
+        }
+        int got = 0, rr = 0, gg = 0, bb = 0;
+        char tail[4];
+        got = crt_sscanf(text, "%d,%d,%d%1s", &rr, &gg, &bb, tail);
+        const BYTE pr = (BYTE)fill[fill_index(3, 8, 4)], pg = (BYTE)fill[fill_index(3, 8, 0)];
+        bool pattern = true;
+        for (int side = 0; side < 2; side++) {
+            const BYTE *c = obj[side] + off;
+            if (got < 1 && c[6] != pr)
+                pattern = false;
+            if (got < 2 && c[5] != pg)
+                pattern = false;
+        }
+        char why[200];
+        wsprintfA(why, "[text '%s' fill %x: eax %x/%x, red %x/%x green %x/%x, pattern %x %x]", text, fill[0], r[0], r[1], obj[0][off + 6],
+                  obj[1][off + 6], obj[0][off + 5], obj[1][off + 5], pr, pg);
+        t.check(r[0] == r[1] && px[0] == px[1] && memcmp(obj[0], obj[1], sizeof obj[0]) == 0 && pattern, "", why);
+    }
+    unpatch(pixel);
+    t.report();
+}
+
 }  // namespace
 
 ZAX_CHECKS(field_text)
 {
     test_color_set();
+    test_color_garbage();
     test_text_slots(cls, n);
 }
 

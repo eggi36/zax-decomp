@@ -209,9 +209,10 @@ void free_heap_frame(render::CFrame *f)
     heap_free(f);
 }
 
-// The original keeps its 1 MB histogram on the stack (_chkstk 0x100000): more than the main thread's whole
-// reserve (SizeOfStackReserve 0x100000), so it overflows the game thread's stack; both sides run on a thread
-// with a 4 MB stack
+// Both sides keep the 1 MB histogram on the stack (_chkstk 0x100000; the reimplementation too since batch
+// decomp-faithful2): more than the main thread's whole reserve (SizeOfStackReserve 0x100000), so it overflows
+// the game thread's stack; both sides run on a thread with a 4 MB stack, and every eighth case also on one of
+// 1 MB, where both overflow
 struct F10 {
     render::CFrame *f;
     DWORD al;
@@ -224,8 +225,10 @@ DWORD WINAPI f10_thread(void *p)
     return 0;
 }
 
+DWORD g_f10_overflows, g_f10_tries;   // the stack overflow cases: overflows seen, calls (both sides)
 void check_filter10(Tally &t)
 {
+    g_f10_overflows = g_f10_tries = 0;
     g_seed = 0x4b2b50;
     for (int k = 0; k < scaled(120); k++) {
         const unsigned seed = random();
@@ -242,11 +245,29 @@ void check_filter10(Tally &t)
             s.add(c.al);
             const render::Palette *pal = vcall<render::Palette *>(c.f, 58);
             s.add_bytes(pal ? pal->data : nullptr, 0x300);
+            if (k % 8 == 0) {
+                // On a stack of the main thread's size (SizeOfStackReserve 0x100000) the 1 MB histogram does not
+                // fit: _chkstk's probe runs into the end of the stack, a stack overflow on both sides (batch
+                // decomp-faithful2; the original's crash, docs/ORIGINAL_BUGS.md 2.27). Compared: the exception's
+                // code and access kind (the address is the end of each thread's own stack).
+                DWORD filter[6] = {0x5f4988, 0, 10, 0xffffffffu, 0, 0};
+                const DWORD args[2] = {(DWORD)(uintptr_t)c.f, 0};
+                Fault fault;
+                call_faulting_on_thread(fault, 0x100000, at<void *>(0x4b2b50), (DWORD)(uintptr_t)filter, args, 2);
+                s.add(fault.code);
+                s.add(fault.kind);
+                g_f10_overflows += fault.code == 0xc00000fdu;
+                g_f10_tries++;
+            }
             drop_dynamics(c.f);
             free_heap_frame(c.f);
             return s;
         });
     }
+    char d[100];
+    wsprintfA(d, "[stack overflows on a 1 MB stack: %u of %u calls]", g_f10_overflows, g_f10_tries);
+    t.check(g_f10_tries > 0 && g_f10_overflows == g_f10_tries, "FrameFilter10::Apply", d);
+    log("  filter 10: %s", d);
 }
 
 }  // namespace

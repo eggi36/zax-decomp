@@ -1,5 +1,6 @@
 // The slots of the field kinds that create objects (see field_objects.h).
 #include "field_objects.h"
+#include "exe_frame.h"
 
 namespace zax {
 
@@ -265,20 +266,27 @@ DWORD THISCALL CFieldObjects::ArrayWriteBinary(CObjectArrayFieldDesc *self, BYTE
     return res;
 }
 
-// 0x419810
-DWORD THISCALL CFieldObjects::ArrayReadBinary(CObjectArrayFieldDesc *self, BYTE *object, CFileBuf *r)
+// 0x419810 (thiscall; object, reader), ret 8, in the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions
+// 0x419810-0x41994f]: `sub esp, 0x408`, the count at [esp + 0] (read at 0x41983d, never set otherwise), the count to
+// resize to at [esp + 4] (0x419846, 0x419856), the name at [esp + 8], 0x400 bytes (0x4198b8). A reader that ends
+// before the count leaves whatever the stack held at [esp + 0] as the count, and a name it does not read leaves the
+// stack's bytes as the name, as in the original.
+extern "C" DWORD __cdecl zax_array_read_binary(CObjectArrayFieldDesc *self, BYTE *object, CFileBuf *r, BYTE *frame)
 {
+    DWORD &n = *reinterpret_cast<DWORD *>(frame);
+    DWORD &m = *reinterpret_cast<DWORD *>(frame + 4);
+    char *const buf = reinterpret_cast<char *>(frame + 8);
     array_resize(self, object, 0, (DWORD)-1, 0);
-    DWORD n = 0;   // uninitialised in the original
     fb_read_dword(r, &n);
     void *names = reinterpret_cast<void *>(self->f40);
-    const DWORD m = names ? list_count(names) : n;
+    m = n;
+    if (names)
+        m = list_count(names);
     array_resize(self, object, m, (DWORD)-1, 1);
     if (names) {
         for (DWORD i = 0; i < m; i++)
             vcall<DWORD>(self->element, 6, array_element(self, object, i));
         for (DWORD j = 0; j < n; j++) {
-            char buf[0x400];
             fb_read_counted(r, buf);
             const int k = list_index(names, buf);
             if (k == -1)
@@ -296,6 +304,7 @@ DWORD THISCALL CFieldObjects::ArrayReadBinary(CObjectArrayFieldDesc *self, BYTE 
     }
     return (n & ~0xffu) | 1;
 }
+ZAX_EXE_FRAME_ENTRY(zax_array_read_binary_entry, zax_array_read_binary, 0x408, 2, 8)
 
 // 0x419960
 DWORD THISCALL CFieldObjects::ArrayPrecache(CObjectArrayFieldDesc *self, BYTE *object)
@@ -422,10 +431,14 @@ DWORD THISCALL CFieldObjects::ListWriteBinary(CListFieldDesc *self, BYTE *object
     return res;
 }
 
-// 0x418050
-DWORD THISCALL CFieldObjects::ListReadBinary(CListFieldDesc *self, BYTE *object, CFileBuf *r)
+// 0x418050 (thiscall; object, reader), ret 8, in the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions
+// 0x418050-0x4181a0]: `sub esp, 0x404`, the count at [esp + 0] (read at 0x418068, never set otherwise), the name at
+// [esp + 4], 0x400 bytes (0x41810a). A reader that ends before the count leaves whatever the stack held at
+// [esp + 0] as the count, and a name it does not read leaves the stack's bytes as the name, as in the original.
+extern "C" DWORD __cdecl zax_list_read_binary(CListFieldDesc *self, BYTE *object, CFileBuf *r, BYTE *frame)
 {
-    DWORD n = 0;   // uninitialised in the original
+    DWORD &n = *reinterpret_cast<DWORD *>(frame);
+    char *const buf = reinterpret_cast<char *>(frame + 4);
     fb_read_dword(r, &n);
     void *names = reinterpret_cast<void *>(self->f40);
     const DWORD m = names ? list_count(names) : n;
@@ -436,7 +449,6 @@ DWORD THISCALL CFieldObjects::ListReadBinary(CListFieldDesc *self, BYTE *object,
         for (DWORD i = 0; i < m; i++)
             vcall<DWORD>(list_data(self, object) + self->element_size * i, 19);
         for (DWORD j = 0; j < n; j++) {
-            char buf[0x400];
             fb_read_counted(r, buf);
             const int k = list_index(names, buf);
             if (k == -1)
@@ -454,6 +466,7 @@ DWORD THISCALL CFieldObjects::ListReadBinary(CListFieldDesc *self, BYTE *object,
     }
     return (n & ~0xffu) | 1;
 }
+ZAX_EXE_FRAME_ENTRY(zax_list_read_binary_entry, zax_list_read_binary, 0x404, 2, 8)
 
 // 0x4181b0
 DWORD THISCALL CFieldObjects::ListPrecache(CListFieldDesc *self, BYTE *object)
@@ -499,13 +512,13 @@ ZAX_HOOKS(field_objects)
         {0x418d70, ptr(&CFieldObjects::ObjectPrecache), "ObjectField_Precache", 7, {0x8b, 0x41, 0x10, 0x8b, 0x4c, 0x24, 0x04, 0x8b}},
         {0x419470, ptr(&CFieldObjects::ArrayFromText), "ObjectArrayField_FromText", 6, {0x81, 0xec, 0x10, 0x04, 0x00, 0x00, 0x53, 0x55}},
         {0x4197a0, ptr(&CFieldObjects::ArrayWriteBinary), "ObjectArrayField_WriteBinary", 7, {0x51, 0x53, 0x55, 0x8b, 0x5c, 0x24, 0x14, 0x56}},
-        {0x419810, ptr(&CFieldObjects::ArrayReadBinary), "ObjectArrayField_ReadBinary", 6, {0x81, 0xec, 0x08, 0x04, 0x00, 0x00, 0x53, 0x55}},
+        {0x419810, (void *)&zax_array_read_binary_entry, "ObjectArrayField_ReadBinary", 6, {0x81, 0xec, 0x08, 0x04, 0x00, 0x00, 0x53, 0x55}},
         {0x419960, ptr(&CFieldObjects::ArrayPrecache), "ObjectArrayField_Precache", 5, {0x53, 0x8b, 0x5c, 0x24, 0x08, 0x56, 0x8b, 0xf1}},
         {0x4199b0, ptr(&CFieldObjects::ArrayAppend), "ObjectArrayField_Append", 5, {0x53, 0x56, 0x8b, 0xf1, 0x57, 0x8b, 0x7c, 0x24}},
         {0x4199f0, ptr(&CFieldObjects::ArrayRemoveAt), "ObjectArrayField_RemoveAt", 7, {0x8b, 0x44, 0x24, 0x08, 0x8b, 0x51, 0x10, 0x6a}},
         {0x417c60, ptr(&CFieldObjects::ListFromText), "ListField_FromText", 6, {0x81, 0xec, 0x04, 0x04, 0x00, 0x00, 0x53, 0x55}},
         {0x417ff0, ptr(&CFieldObjects::ListWriteBinary), "ListField_WriteBinary", 7, {0x53, 0x55, 0x56, 0x8b, 0x6c, 0x24, 0x14, 0x57}},
-        {0x418050, ptr(&CFieldObjects::ListReadBinary), "ListField_ReadBinary", 6, {0x81, 0xec, 0x04, 0x04, 0x00, 0x00, 0x8d, 0x44}},
+        {0x418050, (void *)&zax_list_read_binary_entry, "ListField_ReadBinary", 6, {0x81, 0xec, 0x04, 0x04, 0x00, 0x00, 0x8d, 0x44}},
         {0x4181b0, ptr(&CFieldObjects::ListPrecache), "ListField_Precache", 6, {0x53, 0x55, 0x8b, 0x6c, 0x24, 0x0c, 0x56, 0x57}},
         {0x418620, ptr(&CFieldObjects::ClassWriteBinary), "ClassField_WriteBinary", 7, {0x8b, 0x41, 0x10, 0x8b, 0x4c, 0x24, 0x04, 0x8b}},
         {0x418650, ptr(&CFieldObjects::ClassReadBinary), "ClassField_ReadBinary", 7, {0x83, 0xec, 0x64, 0x8d, 0x44, 0x24, 0x00, 0x56}},

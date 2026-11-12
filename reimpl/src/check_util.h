@@ -360,4 +360,43 @@ void live_blocks_log(const char *what);
 // -1 or outside the list, or when the entry is no CLayer (class 0x6c1d04). Reads only those fields.
 BYTE *real_player_layer();
 
+// ---- Stack garbage and faults the exe reproduces (batch decomp-faithful2, docs/DECOMPILATION.md 16) ----------------
+//
+// zax_call_stack: writes the `count` dwords of `fill` below the current stack pointer S (fill[i] at S - 4 * (i + 1)),
+// then calls fn with ecx = `ecx` and the `n` dwords of `args` pushed (args[0] last, at the lowest address; they
+// overwrite fill[0 .. n - 1]), and returns its eax; eax at the call is fill[count - 1] (0 without a fill). The
+// callee's uninitialised locals then hold the fill, the same on both sides of a check when both are called this way
+// with the same fill. Works for callee-popped and caller-popped arguments (the stack pointer is restored from the
+// frame). A callee's local at [its esp after `sub esp, frame`] + off is fill[(4 * n + 4 + frame - off) / 4 - 1].
+extern "C" DWORD __cdecl zax_call_stack(const void *fn, DWORD ecx, const DWORD *args, DWORD n, const DWORD *fill, DWORD count);
+constexpr DWORD STACK_FILL = 0x80;   // dwords: 0x200 bytes
+// The fill of a case: an LCG from the seed, one dword each
+inline void stack_pattern(DWORD *fill, DWORD count, DWORD seed)
+{
+    for (DWORD i = 0; i < count; i++)
+        fill[i] = seed = seed * 1664525u + 1013904223u;
+}
+// The fill index of a callee's local (see zax_call_stack)
+constexpr DWORD fill_index(DWORD nargs, DWORD frame, DWORD off) { return (4 * nargs + 4 + frame - off) / 4 - 1; }
+// zax_call_stack with an LCG pattern of STACK_FILL dwords from `seed`
+inline DWORD zax_call_filled(const void *fn, DWORD ecx, const DWORD *args, DWORD n, DWORD seed)
+{
+    DWORD fill[STACK_FILL];
+    stack_pattern(fill, STACK_FILL, seed);
+    return zax_call_stack(fn, ecx, args, n, fill, STACK_FILL);
+}
+
+// zax_call_faulting: calls fn as zax_call_filled does (without the fill) and catches a hardware exception of this
+// thread inside it (access violation, stack overflow, ...): its code, the access kind and address (the first two
+// parameters of the exception record, when it has them) and the instruction's address go into `fault`, and the
+// call is left as zax_escape_exit leaves zax_call_escapable (the callee's own clean-up does not run). Returns the
+// callee's eax, or 0x7fff0002 after a fault. fault.code is 0 when nothing faulted.
+struct Fault {
+    DWORD code, kind, address, at;
+};
+DWORD call_faulting(Fault &fault, const void *fn, DWORD ecx, const DWORD *args, DWORD n);
+// On a thread of its own with the given stack reserve (the main thread's is 0x100000): for a fault that is a
+// stack overflow at the end of the stack
+DWORD call_faulting_on_thread(Fault &fault, DWORD stack_reserve, const void *fn, DWORD ecx, const DWORD *args, DWORD n);
+
 }  // namespace zax

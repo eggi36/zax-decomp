@@ -1,5 +1,6 @@
 // The object table and the object stream's own methods (see object_table.h).
 #include "object_table.h"
+#include "exe_frame.h"
 #include "ptr_array.h"
 
 namespace zax {
@@ -172,28 +173,37 @@ DWORD THISCALL ObjectTable::ReadLocation(const char *value)
     return fb_seek(stream, location);
 }
 
-// 0x55c9b0. The dwords are not checked: a stream that ends early leaves them as they were (the
-// original's are uninitialised stack, here 0).
-DWORD THISCALL ObjectTable::ReadLocationBinary()
+// 0x55c9b0, in the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions 0x55c9b0-0x55cac1]: `sub esp, 0x14`,
+// the count at [esp + 0] (0x55ca03), the list's position at [esp + 4] (0x55c9d1), each ID at [esp + 8] (0x55ca8d) and
+// its copy that the list's Add takes by reference at [esp + 0xc] (0x55ca98), the word after the position at
+// [esp + 0x10] (0x55c9f6, never read). The dwords are not checked: a stream that ends early leaves whatever the stack
+// held at those addresses, as in the original. eax: the seek's; with the location already known the caller's eax
+// (the exe returns without touching it; its one caller 0x41700c does not read it).
+extern "C" DWORD __cdecl zax_table_read_location_binary(ObjectTable *t, DWORD eax_in, BYTE *frame)
 {
-    if (location != 0xffffffff)
-        return 0;
-    DWORD at_ = 0, magic = 0, n = 0;
-    format = 1;
-    fb_read_dword(stream, &at_);
-    location = fb_tell(stream);
-    fb_seek(stream, at_);
-    fb_read_dword(stream, &magic);
-    fb_read_dword(stream, &n);
-    clear_and_reserve(referenced, n);
-    list_read = 1;
+    if (t->location != 0xffffffff)
+        return eax_in;
+    DWORD &n = *reinterpret_cast<DWORD *>(frame);
+    DWORD &at_ = *reinterpret_cast<DWORD *>(frame + 4);
+    DWORD &id = *reinterpret_cast<DWORD *>(frame + 8);
+    void *&copy = *reinterpret_cast<void **>(frame + 0xc);
+    DWORD &magic = *reinterpret_cast<DWORD *>(frame + 0x10);
+    t->format = 1;
+    fb_read_dword(t->stream, &at_);
+    t->location = fb_tell(t->stream);
+    fb_seek(t->stream, at_);
+    fb_read_dword(t->stream, &magic);
+    fb_read_dword(t->stream, &n);
+    clear_and_reserve(t->referenced, n);
+    t->list_read = 1;
     for (DWORD i = 0; i < n; i++) {
-        DWORD id = 0;
-        fb_read_dword(stream, &id);
-        list_add(referenced, reinterpret_cast<void *>(static_cast<uintptr_t>(id)));
+        fb_read_dword(t->stream, &id);
+        copy = reinterpret_cast<void *>(static_cast<uintptr_t>(id));
+        vcall<DWORD>(&t->referenced, 2, &copy);
     }
-    return fb_seek(stream, location);
+    return fb_seek(t->stream, t->location);
 }
+ZAX_EXE_FRAME_ENTRY_EAX(zax_table_read_location_binary_entry, zax_table_read_location_binary, 0x14, 0, 0)
 
 // 0x55cad0
 DWORD THISCALL ObjectTable::AddReference(void *object)
@@ -438,7 +448,7 @@ ZAX_HOOKS(object_table)
         {0x55c780, ptr(&ObjectTable::WriteLocation), "ObjectTable::WriteLocation", 6, {0x83, 0xec, 0x64, 0x56, 0x8b, 0xf1, 0x83, 0x7e}},
         {0x55c7d0, ptr(&ObjectTable::WriteLocationBinary), "ObjectTable::WriteLocationBinary", 7, {0x56, 0x8b, 0xf1, 0x83, 0x7e, 0x04, 0xff, 0x75}},
         {0x55c800, ptr(&ObjectTable::ReadLocation), "ObjectTable::ReadLocation", 6, {0x81, 0xec, 0xd4, 0x00, 0x00, 0x00, 0x55, 0x56}},
-        {0x55c9b0, ptr(&ObjectTable::ReadLocationBinary), "ObjectTable::ReadLocationBinary", 6, {0x83, 0xec, 0x14, 0x57, 0x8b, 0xf9, 0x83, 0x7f}},
+        {0x55c9b0, (void *)&zax_table_read_location_binary_entry, "ObjectTable::ReadLocationBinary", 6, {0x83, 0xec, 0x14, 0x57, 0x8b, 0xf9, 0x83, 0x7f}},
         {0x55cad0, ptr(&ObjectTable::AddReference), "ObjectTable::AddReference", 6, {0x56, 0x57, 0x8b, 0x7c, 0x24, 0x0c, 0x85, 0xff}},
         {0x55cb30, ptr(&ObjectTable::AddWritten), "ObjectTable::AddWritten", 7, {0x8b, 0x44, 0x24, 0x04, 0x8b, 0x51, 0x4c, 0x83}},
         {0x55cb50, ptr(&ObjectTable::Resolve), "ObjectTable::Resolve", 5, {0x83, 0xec, 0x08, 0x53, 0x55, 0x8b, 0x6c, 0x24}},

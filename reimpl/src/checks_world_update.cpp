@@ -542,9 +542,21 @@ DWORD THISCALL mover_motion(Fake *f, BounceMotion *m)
 }
 DWORD THISCALL mover_result(Fake *f, const BounceResult *r) { ev('r', fid(f), fnv(2166136261u, r, sizeof *r)); return 0; }
 DWORD THISCALL fake_move(Fake *f, DWORD x, DWORD y) { ev('p', fid(f), x, y); return 0; }
+// The exe's frame cases (bounce_frame_case, net_frame_case; batch decomp-faithful2): the stack below the call is
+// filled with the case's pattern, the sweep may report a hit without naming the part, and the part hit and the
+// channel are recorded raw
+// g_frame_expect: the fill's dword at the exe's slot (the part hit, the channel dword); g_frame_seen and g_frame_bad
+// count the values that came from that slot and those that were not the fill's
+bool g_frame_case;
+DWORD g_frame_expect, g_frame_seen, g_frame_bad;
 DWORD THISCALL mover_hit(Fake *f, void *hit, const float *point, const float *normal, DWORD z)
 {
-    ev('h', fid(f), tag(hit), fnv(fnv(2166136261u, point, 8), normal, 8) ^ z);
+    const bool raw = g_frame_case && (fid(hit) >> 24) != 0xfa;
+    if (raw) {
+        g_frame_seen++;
+        g_frame_bad += ptrv(hit) != g_frame_expect;
+    }
+    ev('h', fid(f), raw ? ptrv(hit) : tag(hit), fnv(fnv(2166136261u, point, 8), normal, 8) ^ z);
     return 0;
 }
 void *THISCALL fake_shape(Fake *f) { return &g_fakes[(f->id + 1) % NFAKE]; }
@@ -655,6 +667,8 @@ DWORD THISCALL rec_sweep(void *sd, void *shape, float *pos, BounceMotion *m, Swe
     ev('X', tag(sd), tag(shape), fnv(fnv(fnv(2166136261u, pos, 8), reinterpret_cast<BYTE *>(m) + 4, 0xc), reinterpret_cast<BYTE *>(m) + 0x1c, 2));
     ev('x', tag(h), tag(mover), a6 ^ a7 ^ a8);
     st(fnv(2166136261u, reinterpret_cast<BYTE *>(m) + 0x20, 0x18));
+    if (g_frame_case)   // the stack below the call holds the same pattern on both sides
+        ev('y', fnv(2166136261u, reinterpret_cast<BYTE *>(m) + 0x10, 0xc));
     if (random() % 3 == 0)
         return 0x100;   // al 0
     h->t = random() % 6 ? (float)(random() % 100) / 100.0f : random_float();
@@ -668,7 +682,7 @@ DWORD THISCALL rec_sweep(void *sd, void *shape, float *pos, BounceMotion *m, Swe
     h->point[1] = small_float(1000);
     h->other[0] = small_float(10);
     h->other[1] = small_float(10);
-    if (hit_part)
+    if (hit_part && !(g_frame_case && random() % 2))   // the frame cases: half the hits do not name the part
         *hit_part = &g_fakes[9];
     return 1;
 }
@@ -717,7 +731,12 @@ DWORD THISCALL rec_simple(void *reader, void *p, void *player, void *layer, DWOR
 DWORD THISCALL rec_play(void *reader, void *p, void *player, void *layer, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD ch)
 {
     ev('P', reader != nullptr, tag(p) ^ tag(player), tag(layer) ^ sound);
-    ev('q', fnv(2166136261u, pos, 8), mode ^ (keep << 8), ch & 0xff);
+    // the channel's upper bytes are the stack's at 0x4eaab0's [esp + 0]: compared where the stack is filled alike
+    if (g_frame_case) {
+        g_frame_seen++;
+        g_frame_bad += (ch & 0xffffff00u) != (g_frame_expect & 0xffffff00u);
+    }
+    ev('q', fnv(2166136261u, pos, 8), mode ^ (keep << 8), g_frame_case ? ch : ch & 0xff);
     return 1;
 }
 DWORD THISCALL rec_free_channel(void *reader, DWORD sound) { ev('f', reader != nullptr, sound); return random() % 4 ? random() % 8 : 0xff; }
@@ -774,6 +793,44 @@ DWORD bounce_case(DWORD &mask)
         st_f(pos[1]);
         st(tag(hit));
     }
+    patches.off();
+    *reporter = saved_reporter;
+    for (DWORD i = 0; i < sizeof out / 4; i++)
+        st(reinterpret_cast<DWORD *>(&out)[i]);
+    mask = 0xff;
+    return r;
+}
+
+// 0x4e96c0 in the exe's frame (batch decomp-faithful2): called with the 0x200 bytes below the call filled with the
+// case's pattern, so the part hit at the exe's [esp + 0] (passed to slot 67 when the sweep reports a hit without
+// naming the part) and the motion's +0x10..+0x1b (the sweep's copy, recorded) are the pattern's on both sides; the
+// part hit is recorded raw.
+DWORD bounce_frame_case(DWORD &mask)
+{
+    init_fakes();
+    Fake *mover = &g_fakes[0];
+    float *mf = reinterpret_cast<float *>(reinterpret_cast<BYTE *>(mover) + 0x4c);
+    mf[0] = small_float(1000);
+    mf[1] = small_float(1000);
+    float *back = reinterpret_cast<float *>(reinterpret_cast<BYTE *>(mover) + 0x100);
+    back[0] = small_float(1000);
+    back[1] = small_float(1000);
+    void **reporter = at<void **>(0x6c02cc);
+    void *saved_reporter = *reporter;
+    *reporter = &g_fakes[7];
+    Patches patches;
+    patches.add(0x4e8e00, (void *)&rec_sweep);
+    BounceResult out;
+    memset(&out, 0x5a, sizeof out);
+    alignas(4) BYTE sd[0x190];
+    memset(sd, 0, sizeof sd);
+    const DWORD args[3] = {ptrv(mover), ptrv(&out), random() % 3};
+    DWORD fill[STACK_FILL];
+    stack_pattern(fill, STACK_FILL, random());
+    g_frame_expect = fill[fill_index(3, 0x44, 0)];
+    g_frame_case = true;
+    const DWORD r = zax_call_stack(at<void *>(0x4e96c0), ptrv(sd), args, 3, fill, STACK_FILL) & 0xff;
+    g_frame_case = false;
     patches.off();
     *reporter = saved_reporter;
     for (DWORD i = 0; i < sizeof out / 4; i++)
@@ -1012,6 +1069,36 @@ DWORD net_case(DWORD &mask)
     return r;
 }
 
+// 0x4eaab0 in the exe's frame (batch decomp-faithful2): as net_case's SendSound, called with the 0x200 bytes below
+// the call filled with the case's pattern, so the upper three bytes of the channel dword it stores at its [esp + 0]
+// and passes to the block writer are the pattern's on both sides (recorded whole); eax compared whole (al the
+// channel, the upper bytes the player count's).
+DWORD net_frame_case(DWORD &mask)
+{
+    init_fakes();
+    init_world_fakes();
+    Layer *l = fake_layer();
+    *at<DWORD *>(0x6c2080) = ptrv(&g_fakes[1]);
+    *at<DWORD *>(SOUND_LAYER) = random() % 4 ? ptrv(l) : 0;
+    *at<DWORD *>(NET_MODE) = random() % 8 ? 0 : 0x1234500 + random() % 2;
+    const DWORD sounds[] = {0xffffffff, 0, 7, 0x123};
+    const DWORD sound = sounds[random() % 8 ? 1 + random() % 3 : 0];
+    float pos[2] = {small_float(2000), random() % 8 ? small_float(2000) : random_float()};
+    const DWORD mode = random() % 4, keep = random() % 2;
+    const DWORD channel = random() % 3 ? 0xff : random() % 8 + (random() % 2 ? 0x4400 : 0);
+    const DWORD args[5] = {sound, ptrv(pos), mode, keep, channel};
+    DWORD fill[STACK_FILL];
+    stack_pattern(fill, STACK_FILL, random());
+    g_frame_expect = fill[fill_index(5, 0x28, 0)];
+    g_frame_case = true;
+    const DWORD r = zax_call_stack(at<void *>(0x4eaab0), ptrv(l), args, 5, fill, STACK_FILL);
+    g_frame_case = false;
+    mask = 0xffffffff;
+    st_fake_layer();
+    restore_view_state();
+    return r;
+}
+
 // ---- Dirty marks on the real queues ---------------------------------------------------------------------------
 
 BYTE g_moving[2][512];
@@ -1102,8 +1189,9 @@ ZAX_CHECKS(world_update)
     (void)n;
     const DWORD start = GetTickCount();
     Tally queries{"world update: part queries and placing in fresh layers"}, entities{"world update: entity type fix"},
-        bounce{"world update: bounce"}, views{"world update: shake, update, views, frame"},
-        net{"world update: multiplayer sounds and positions"}, dirty{"world update: dirty marks"},
+        bounce{"world update: bounce"}, bounce_frame{"world update: bounce in the exe's frame (stack pattern)"}, views{"world update: shake, update, views, frame"},
+        net{"world update: multiplayer sounds and positions"},
+        net_frame{"world update: SendSound in the exe's frame (stack pattern)"}, dirty{"world update: dirty marks"},
         real{"world update: surface, blockers, corridor (real data)"};
     save_bytes(g_generator, GAME_RANDOM, GAME_RANDOM_BYTES);
     save_view_state();
@@ -1116,6 +1204,17 @@ ZAX_CHECKS(world_update)
     for (unsigned seed = 1; seed <= (unsigned)scaled(600); seed++)
         two_sides(bounce, "bounce", seed, [](DWORD &mask) { return bounce_case(mask); });
     bounce.report();
+    g_frame_seen = g_frame_bad = 0;
+    for (unsigned seed = 1; seed <= (unsigned)scaled(300); seed++)
+        two_sides(bounce_frame, "bounce frame", seed, [](DWORD &mask) { return bounce_frame_case(mask); });
+    {
+        // the part hit of a hit without one is the fill's dword at the exe's [esp + 0], on both sides
+        char d[100];
+        wsprintfA(d, "[part hit from the frame's slot: %u, not the fill's: %u]", g_frame_seen, g_frame_bad);
+        bounce_frame.check(g_frame_bad == 0 && (g_frame_seen > 0 || scaled(300) < 50), "bounce frame", d);
+        log("  bounce frame: %s", d);
+    }
+    bounce_frame.report();
     {
         Patches patches;
         add_view_patches(patches);
@@ -1123,11 +1222,19 @@ ZAX_CHECKS(world_update)
             two_sides(views, "views", seed, [](DWORD &mask) { return views_case(mask); });
         for (unsigned seed = 1; seed <= (unsigned)scaled(1200); seed++)
             two_sides(net, "net", seed, [](DWORD &mask) { return net_case(mask); });
+        g_frame_seen = g_frame_bad = 0;
+        for (unsigned seed = 1; seed <= (unsigned)scaled(400); seed++)
+            two_sides(net_frame, "net frame", seed, [](DWORD &mask) { return net_frame_case(mask); });
+        char d[100];
+        wsprintfA(d, "[channel dwords: %u, upper bytes not the fill's: %u]", g_frame_seen, g_frame_bad);
+        net_frame.check(g_frame_bad == 0 && (g_frame_seen > 0 || scaled(400) < 50), "net frame", d);
+        log("  net frame: %s", d);
         patches.off();
     }
     restore_view_state();
     views.report();
     net.report();
+    net_frame.report();
     for (unsigned seed = 1; seed <= (unsigned)scaled(30); seed++)
         two_sides(dirty, "dirty", seed, [](DWORD &mask) { return dirty_case(mask); });
     dirty.report();

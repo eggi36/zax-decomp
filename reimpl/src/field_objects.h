@@ -64,14 +64,14 @@ struct CFieldObjects {
     // pointer array
     static DWORD THISCALL ArrayFromText(CObjectArrayFieldDesc *self, BYTE *object, char *text, CFileBuf *r); // 0x419470
     static DWORD THISCALL ArrayWriteBinary(CObjectArrayFieldDesc *self, BYTE *object, CFileBuf *w);          // 0x4197a0
-    static DWORD THISCALL ArrayReadBinary(CObjectArrayFieldDesc *self, BYTE *object, CFileBuf *r);           // 0x419810
+    // 0x419810: field_objects.cpp's zax_array_read_binary_entry, in the exe's frame (exe_frame.h)
     static DWORD THISCALL ArrayPrecache(CObjectArrayFieldDesc *self, BYTE *object);                            // 0x419960
     static BYTE *THISCALL ArrayAppend(CObjectArrayFieldDesc *self, BYTE *object);                            // 0x4199b0
     static DWORD THISCALL ArrayRemoveAt(CObjectArrayFieldDesc *self, BYTE *object, DWORD at);                // 0x4199f0
     // new[] array
     static DWORD THISCALL ListFromText(CListFieldDesc *self, BYTE *object, char *text, CFileBuf *r);         // 0x417c60
     static DWORD THISCALL ListWriteBinary(CListFieldDesc *self, BYTE *object, CFileBuf *w);                  // 0x417ff0
-    static DWORD THISCALL ListReadBinary(CListFieldDesc *self, BYTE *object, CFileBuf *r);                   // 0x418050
+    // 0x418050: field_objects.cpp's zax_list_read_binary_entry, in the exe's frame (exe_frame.h)
     static DWORD THISCALL ListPrecache(CListFieldDesc *self, BYTE *object);                                    // 0x4181b0
     // class pointer
     static DWORD THISCALL ClassWriteBinary(CAIFieldDesc *self, BYTE *object, CFileBuf *w);                   // 0x418620

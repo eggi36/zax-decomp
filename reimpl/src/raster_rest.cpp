@@ -28,7 +28,8 @@
 //  - Filter 10 (the palette from a colour histogram): a histogram of 2^18 dwords (6 bits per channel) on
 //    the stack (1 MB with _chkstk: as much as the exe's whole stack reserve, SizeOfStackReserve 0x100000,
 //    so the original overflows the main thread's stack whenever it runs [confirmed: VM, the check crashed
-//    the game]; here on the heap: the DLL has no stack probes), cleared (0x46dc30),
+//    the game]; here on the stack too since batch decomp-faithful2, through the exe's _chkstk in a naked
+//    entry, so it overflows the same way; until then on the heap), cleared (0x46dc30),
 //    filled from the frame's pixels as 3-byte pixels, width * height of them without the pitch (0x46dc50:
 //    slots 31, 45, 39), then DrawPalette_Build 0x527fa0 (the frame's palette, slot 58, which a frame without
 //    one creates; kind 1, 0xfe colours); al = 1.
@@ -280,20 +281,40 @@ void THISCALL Histogram_Add24(DWORD *h, void *frame)
         h[((((DWORD)(p[0] & 0xfc) << 6) + (p[1] & 0xfc)) << 4) + (p[2] >> 2)]++;
 }
 
-// 0x4b2b50 (thiscall filter; frame, rect), ret 8
-bool THISCALL FrameFilter10_Apply(void *, void *frame, const Rect *)
+}  // namespace
+
+// 0x4b2b50 (thiscall filter; frame, rect), ret 8 [verified 2026-11-12: the instructions 0x4b2b50-0x4b2bb8]: the colour
+// histogram, 2^18 dwords (1 MB), lies on the stack as in the exe: the entry makes the exe's frame with the exe's
+// `mov eax, 0x100000; call _chkstk` (0x5d2080, which probes it page by page from the top), and the histogram is the
+// whole frame ([esp + 8] after the exe's two pushes, the frame's base here), cleared by 0x46dc30 and filled by
+// 0x46dc50. On a stack with less than 1 MB free below the call (the main thread's whole reserve is 1 MB,
+// SizeOfStackReserve 0x100000) the probe runs into the end of the stack and the game ends with a stack overflow,
+// as the original does (docs/ORIGINAL_BUGS.md 2.27). Then slot 58 (the palette) of the frame as the class test left
+// it (null: read through address 0, as in the exe, which has no test there). al: 1, the upper bytes of eax the
+// palette builder's.
+extern "C" DWORD __cdecl zax_filter10_apply(void *, void *frame, const Rect *, BYTE *histogram)
 {
-    void *const f = frame && obj_is_kind_of(frame, fn<CClassInfo *(__cdecl *)()>(0x4a8760)()) ? frame : nullptr;
-    DWORD *const h = static_cast<DWORD *>(heap_alloc(0x100000));
+    void *f = frame && obj_is_kind_of(frame, fn<CClassInfo *(__cdecl *)()>(0x4a8760)()) ? frame : nullptr;
+    __asm__("" : "+r"(f));   // no test of f before its slot is called: the compiler may not assume it non-null
+    DWORD *const h = reinterpret_cast<DWORD *>(histogram);
     fn<DWORD *(THISCALL *)(DWORD *)>(0x46dc30)(h);
     fn<void(THISCALL *)(DWORD *, void *)>(0x46dc50)(h, frame);
     Palette *const pal = f_palette(f);
-    fn<void(THISCALL *)(Palette *, DWORD *, DWORD, DWORD)>(0x527fa0)(pal, h, 1, 0xfe);
-    heap_free(h);
-    return true;
+    return with_low_byte(fn<DWORD(THISCALL *)(Palette *, DWORD *, DWORD, DWORD)>(0x527fa0)(pal, h, 1, 0xfe), 1);
 }
-
-}  // namespace
+extern "C" __attribute__((naked)) void zax_filter10_apply_entry()
+{
+    __asm__("movl $0x100000, %eax\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x5d2080) ", %edx\n\t"   // _chkstk: esp lowered by eax, every page probed; ecx kept
+            "calll *%edx\n\t"
+            "pushl %esp\n\t"                                  // the histogram: the frame's base
+            "pushl (0x100000+4+8)(%esp)\n\t"                  // rect
+            "pushl (0x100000+4+8)(%esp)\n\t"                  // frame
+            "pushl %ecx\n\t"
+            "calll _zax_filter10_apply\n\t"
+            "addl $(0x100000+16), %esp\n\t"
+            "retl $8");
+}
 
 ZAX_HOOKS(raster_rest)
 {
@@ -317,7 +338,7 @@ ZAX_HOOKS(raster_rest)
         {0x54b230, (void *)&PolyFill8_Texture, "PolyFill8_Texture", 6, {0x81, 0xec, 0x88, 0x00, 0x00, 0x00, 0x8b, 0x84}},
         {0x46dc30, (void *)&Histogram_Clear, "Histogram_Clear", 8, {0x8b, 0xd1, 0x57, 0xb9, 0x00, 0x00, 0x04, 0x00}},
         {0x46dc50, (void *)&Histogram_Add24, "Histogram_Add24", 6, {0x55, 0x56, 0x8b, 0x74, 0x24, 0x0c, 0x57, 0x8b}},
-        {0x4b2b50, (void *)&FrameFilter10_Apply, "FrameFilter10::Apply", 5, {0xb8, 0x00, 0x00, 0x10, 0x00, 0xe8, 0x26, 0xf5}},
+        {0x4b2b50, (void *)&zax_filter10_apply_entry, "FrameFilter10::Apply", 5, {0xb8, 0x00, 0x00, 0x10, 0x00, 0xe8, 0x26, 0xf5}},
     };
     return emit_hooks(out, list);
 }

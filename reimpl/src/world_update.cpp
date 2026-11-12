@@ -1,6 +1,7 @@
 // The world update and object placement code of CLayer and CLayerSaveData reimplemented (see
 // world_update.h).
 #include "world_update.h"
+#include "exe_frame.h"
 
 namespace zax {
 
@@ -605,19 +606,25 @@ DWORD THISCALL WorldLayer::SendSoundAt(Layer *self, DWORD sound, void *part, DWO
 
 // 0x4eaab0: a "play sound" block to every player in hearing range (all of them with a channel given);
 // mode 0 without a channel takes the sound's first free channel. al: the channel (0xff: none, also
-// while 0x6c1d0c is set or for sound -1). The original pushes the channel as a dword whose upper bytes
-// are left from the stack; here they are 0.
-DWORD THISCALL WorldLayer::SendSound(Layer *self, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD channel)
+// while 0x6c1d0c is set or for sound -1); the upper bytes of eax are the player count's (0 without
+// players), as the exe's `mov al` leaves them.
+// In the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions 0x4eaab0-0x4eac97]: `sub esp, 0x28`,
+// the channel's byte stored into the dword at [esp + 0] (0x4eaace, 0x4eaaf2) and that whole dword pushed as the
+// block's channel (0x4eac3f, 0x4eac4b): its upper three bytes are whatever the stack held there, as in the original.
+extern "C" DWORD __cdecl zax_layer_send_sound(Layer *self, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD channel,
+                                              BYTE *frame)
 {
     if (const DWORD net = *glob<DWORD *>(NET_MODE))
         return net | 0xff;
-    BYTE ch = (BYTE)channel;
+    BYTE *const ch = frame;   // the low byte of the exe's dword [esp + 0]
+    *ch = (BYTE)channel;
     if (sound == 0xffffffff)
         return 0xffffffff;
-    if (mode == 0 && ch != 0xff)
-        ch = (BYTE)play_sound_free_channel(sound);
+    if (mode == 0 && *ch != 0xff)
+        *ch = (BYTE)play_sound_free_channel(sound);
     void *players = vcall<void *>(world(), 44);
-    for (DWORD i = 0; i < vcall<DWORD>(players, 11); i++) {
+    DWORD count = vcall<DWORD>(players, 11);
+    for (DWORD i = 0; i < count; i++, count = vcall<DWORD>(players, 11)) {
         if ((BYTE)channel == 0xff) {
             const float d2 = player_distance2(self, players, i, pos);
             const LD r = hearing_radius(self, nullptr);
@@ -627,10 +634,11 @@ DWORD THISCALL WorldLayer::SendSound(Layer *self, DWORD sound, const float *pos,
         void *player = vcall<void *>(players, 23, i);
         void *p = vcall<void *>(players, 13, i);
         fn<DWORD(THISCALL *)(void *, void *, void *, Layer *, DWORD, const float *, DWORD, DWORD, DWORD)>(0x4f8e30)(
-            reader_play_sound(), p, player, self, sound, pos, mode, keep, ch);
+            reader_play_sound(), p, player, self, sound, pos, mode, keep, *reinterpret_cast<const DWORD *>(frame));
     }
-    return ch;
+    return with_low_byte(count, *ch);
 }
+ZAX_EXE_FRAME_ENTRY(zax_layer_send_sound_entry, zax_layer_send_sound, 0x28, 5, 0x14)
 
 // 0x4eaca0: a sound received (or made locally) played: without a position by the sound manager
 // (0x57e890); in the layer that plays sounds within hearing range (mode 2 never) the channel's sound (or,
@@ -763,31 +771,37 @@ void THISCALL WorldSaveData::FixEntityTypes(LayerSaveData *self)
 // when the move is zero; through 0x4e91e0 from its position (+0x4c); after a hit slot 95 with the
 // result, the new position (slot 41) and slot 67 (the part hit, the hit point, the normal, 0), otherwise
 // back to +0x100. al: 0.
-DWORD THISCALL WorldSaveData::Bounce(LayerSaveData *self, void *mover, BounceResult *out, DWORD arg)
+// In the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions 0x4e96c0-0x4e97b7]: `sub esp, 0x44`, the
+// part hit at [esp + 0] (its address passed at 0x4e9725, read at 0x4e9773), the position at [esp + 4] (0x4e971d,
+// 0x4e9729), the motion object at [esp + 0xc] up to the return address (0x4e96cc). Nothing sets the part hit
+// before the sweep: the sweep writes it with a hit (0x4e8e00), and where it does not, slot 67 gets whatever the
+// stack held there, as in the original; the motion's +0x10..+0x1b likewise until 0x545b30 sets them.
+extern "C" DWORD __cdecl zax_save_data_bounce(LayerSaveData *self, void *mover, BounceResult *out, DWORD arg, BYTE *frame)
 {
     BYTE *m = static_cast<BYTE *>(mover);
-    BounceMotion motion;
-    fn<void *(THISCALL *)(BounceMotion *, DWORD, DWORD)>(0x545a00)(&motion, 0, 1);
-    vcall<DWORD>(mover, 94, &motion);
-    if (eq_or_unordered(motion.move[0], kf(K_ZERO)) && eq_or_unordered(motion.move[1], kf(K_ZERO)))
+    void **const hit = reinterpret_cast<void **>(frame);
+    float *const pos = reinterpret_cast<float *>(frame + 4);
+    BounceMotion *const motion = reinterpret_cast<BounceMotion *>(frame + 0xc);
+    fn<void *(THISCALL *)(BounceMotion *, DWORD, DWORD)>(0x545a00)(motion, 0, 1);
+    vcall<DWORD>(mover, 94, motion);
+    if (eq_or_unordered(motion->move[0], kf(K_ZERO)) && eq_or_unordered(motion->move[1], kf(K_ZERO)))
         return 0;
-    float pos[2];
     memcpy(pos, m + 0x4c, 8);
-    void *hit = nullptr;   // written by the sweep with every hit (the original's slot is not initialised)
     void *shape = part_shape(mover);
     if ((BYTE)fn<DWORD(THISCALL *)(LayerSaveData *, void *, float *, BounceMotion *, BounceResult *, void **, void *, DWORD, DWORD, DWORD)>(
-            0x4e91e0)(self, shape, pos, &motion, out, &hit, mover, 0, 0, arg)) {
+            0x4e91e0)(self, shape, pos, motion, out, hit, mover, 0, 0, arg)) {
         vcall<DWORD>(mover, 95, out);
         DWORD xy[2];
         memcpy(xy, pos, 8);
         vcall<DWORD>(mover, 41, xy[0], xy[1]);
         if (mover)
-            vcall<DWORD>(mover, 67, hit, out->point, out->normal, (DWORD)0);
+            vcall<DWORD>(mover, 67, *hit, out->point, out->normal, (DWORD)0);
     } else {
         vcall<DWORD>(mover, 41, *reinterpret_cast<DWORD *>(m + 0x100), *reinterpret_cast<DWORD *>(m + 0x104));
     }
     return 0;
 }
+ZAX_EXE_FRAME_ENTRY(zax_save_data_bounce_entry, zax_save_data_bounce, 0x44, 3, 0xc)
 
 // 0x4e91e0: up to five sweeps (0x4e8e00) of a copy of the motion: after a hit the position moved by the
 // free part, the rest of the move and the velocity each reflected at the hit normal (the normal part

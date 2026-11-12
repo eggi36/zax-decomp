@@ -54,10 +54,9 @@ struct CFieldText {
     static BYTE *THISCALL IntPointFromText(CPointFieldDesc *self, BYTE *object, const char *text, DWORD unused);
     // 0x46dee0 "%d,%d,%d" of the bytes +6, +5, +4 (red, green, blue)
     static void THISCALL ColorToText(CColorFieldDesc *self, BYTE *object, ZString *out);
-    // 0x46df60 sscanf "%d,%d,%d", then FieldColor_SetRGBA(r, g, b, 0xff); no setter. A missing red or
-    // green is stack garbage in the original (uninitialised locals); here 0. A missing blue keeps
-    // the text pointer.
-    static DWORD THISCALL ColorFromText(CColorFieldDesc *self, BYTE *object, const char *text, DWORD unused);
+    // 0x46df60 sscanf "%d,%d,%d", then FieldColor_SetRGBA(r, g, b, 0xff); no setter: field_text.cpp's
+    // zax_color_from_text_entry in the exe's frame. A missing red or green is the stack's garbage at the
+    // exe's two uninitialised locals (as in the original); a missing blue keeps the text pointer.
 
     // 0x53f080 FieldColor_SetRGBA: bytes b, g, r, a at +0, b, g, r at +4, the 16-bit pixel
     // 0x433a10(r, g, b) at +8 and flag 2 at +0xc; returns the new flags dword

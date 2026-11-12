@@ -71,7 +71,7 @@ struct ObjectTable {
     DWORD THISCALL WriteLocation();                                       // 0x55c780
     DWORD THISCALL WriteLocationBinary();                                 // 0x55c7d0
     DWORD THISCALL ReadLocation(const char *text);                       // 0x55c800
-    DWORD THISCALL ReadLocationBinary();                                  // 0x55c9b0
+    // 0x55c9b0 ReadLocationBinary: object_table.cpp's zax_table_read_location_binary_entry, in the exe's frame
     DWORD THISCALL AddReference(void *object);                            // 0x55cad0
     DWORD THISCALL AddWritten(void *object);                              // 0x55cb30
     DWORD THISCALL Resolve(DWORD id, const char *class_name, void **field);   // 0x55cb50 (class name unused)

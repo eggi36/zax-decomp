@@ -600,6 +600,9 @@ void trace(CFieldDesc *d, CClassInfo *c, const char *what)
         log("    %s.%s: %s", c->name, d->name.c_str(), what);
 }
 
+Tally *g_trunc;   // the empty stream cases (test_truncated)
+int g_trunc_descs;
+void test_truncated(Tally &t, CFieldDesc *d, bool list);
 void test_field(Tally &t, Tally &bin, CFieldDesc *d, BYTE *owner, CClassInfo *owner_class)
 {
     const DWORD vt = d->vftable;
@@ -659,6 +662,10 @@ void test_field(Tally &t, Tally &bin, CFieldDesc *d, BYTE *owner, CClassInfo *ow
             free_value(d, g_block[s]);
         });
         report(bin, d, "binary", r[0], r[1]);
+        if ((vt == VT_ARRAY_FIELD || vt == VT_LIST_FIELD) && g_trunc_descs < 40) {
+            g_trunc_descs++;
+            test_truncated(*g_trunc, d, vt == VT_LIST_FIELD);
+        }
     }
     // slot 16 (owned object), slot 32, and append / remove of the pointer array on the read value
     if (vt == VT_OBJECT_FIELD) {
@@ -695,6 +702,93 @@ void test_field(Tally &t, Tally &bin, CFieldDesc *d, BYTE *owner, CClassInfo *ow
         report(t, d, "append/remove", r[0], r[1]);
     }
     free_blocks();
+}
+
+// Slot 29 of the pointer array (0x419810) and the new[] array (0x418050) on short streams (batch
+// decomp-faithful2): a count the stream does not hold and a name it refuses are whatever the stack held in the exe's
+// frame (the count at its [esp + 0], the name buffer from [esp + 8] / [esp + 4]). The call goes through
+// zax_call_stack with a fill of the case on both sides, the count's dword set to 0, 1, 2 or 0x1234 (others would
+// read that many elements); a copy of the real descriptor gets a fake name list of one name (slot 22), whose Find
+// (slot 2) records the name it is given (up to 64 bytes) and answers -1, so the read ends at the first name.
+// Compared: eax, the names asked for, and that the count and the name are the fill's at the exe's addresses.
+constexpr DWORD TRUNC_FILL = 0x110;   // dwords: the frame of 0x408 bytes and the arguments
+struct FakeNames {
+    DWORD vftable;
+};
+DWORD g_names_vt[32];
+FakeNames g_fake_names;
+unsigned g_find_hash;
+DWORD g_find_calls;
+unsigned name_hash(const char *s)
+{
+    DWORD n = 0;
+    while (n < 64 && s[n])
+        n++;
+    return fnv(fnv(2166136261u, &n, 4), s, n);
+}
+int THISCALL fake_find(FakeNames *, const char *name, int)
+{
+    g_find_calls++;
+    g_find_hash = fnv(g_find_hash, &g_find_calls, 4) ^ name_hash(name);
+    return -1;
+}
+DWORD THISCALL fake_count(FakeNames *) { return 1; }
+const char *THISCALL fake_name(FakeNames *, DWORD) { return "N"; }
+DWORD g_trunc_cases, g_trunc_asked;
+void test_truncated(Tally &t, CFieldDesc *d, bool list)
+{
+    g_names_vt[1] = ptrv((void *)&fake_name);
+    g_names_vt[2] = ptrv((void *)&fake_find);
+    g_names_vt[22] = ptrv((void *)&fake_count);
+    g_fake_names.vftable = ptrv(g_names_vt);
+    alignas(4) BYTE copy[0x48];
+    memcpy(copy, d, sizeof copy);
+    *reinterpret_cast<DWORD *>(copy + 0x40) = ptrv(&g_fake_names);
+    CFieldDesc *const dc = reinterpret_cast<CFieldDesc *>(copy);
+    const DWORD frame = list ? 0x404 : 0x408, name_at = list ? 4 : 8;
+    // k 0-3: an empty stream, the count from the fill (the name read then gives "": FileBuf_ReadCountedText 0x4a2300
+    // takes the length 0 and ends the buffer); k 4-5: a count of 1 and a name length larger than the stream's rest,
+    // which FileBuf_ReadCountedText refuses without touching the buffer: the name is the fill's bytes there
+    static const BYTE long_name[8] = {1, 0, 0, 0, 0, 1, 0, 0};
+    for (int k = 0; k < 6; k++) {
+        DWORD fill[TRUNC_FILL];
+        stack_pattern(fill, TRUNC_FILL, random());
+        const DWORD counts[6] = {0, 1, 2, 0x1234, 1, 1};
+        const DWORD count = counts[k];
+        if (k < 4)
+            fill[fill_index(2, frame, 0)] = count;
+        if (random() % 3 == 0)   // a short name: a zero byte early in the buffer
+            fill[fill_index(2, frame, name_at + 4 * (random() % 4))] &= 0xff00ffffu;
+        // the name the exe's buffer holds: the fill's bytes from the frame's base + name_at upwards
+        BYTE image[4 * TRUNC_FILL];
+        for (DWORD i = 0; i < TRUNC_FILL; i++)
+            memcpy(image + 4 * TRUNC_FILL - 4 * (i + 1), &fill[i], 4);
+        const DWORD base = 4 * TRUNC_FILL - 4 * 2 - 4 - frame;
+        const char *const name = k < 4 ? "" : reinterpret_cast<const char *>(image + base + name_at);
+        DWORD one = 1;
+        const unsigned want = count ? fnv(2166136261u, &one, 4) ^ name_hash(name) : 2166136261u;
+        DWORD r[2], calls[2];
+        unsigned h[2];
+        both([&](int s) {
+            prepare(dc, g_block[s]);
+            CObjectWriter w;
+            open_stream(&w, 4, 1, long_name, k < 4 ? 0 : 8, 0);
+            g_find_hash = 2166136261u;
+            g_find_calls = 0;
+            const DWORD args[2] = {ptrv(g_block[s]), ptrv(&w)};
+            r[s] = zax_call_stack(pick_address(slot(dc, 29)), ptrv(dc), args, 2, fill, TRUNC_FILL);
+            h[s] = g_find_hash;
+            calls[s] = g_find_calls;
+            close_stream(&w);
+            free_value(dc, g_block[s]);
+        });
+        g_trunc_cases++;
+        g_trunc_asked += calls[0];
+        char m[200];
+        wsprintfA(m, "[%.40s %s, count %x: eax %x/%x, names asked %u/%u, hash %x/%x, expected %x]", d->name.c_str(),
+                  k < 4 ? "empty stream" : "name too long", count, r[0], r[1], calls[0], calls[1], h[0], h[1], want);
+        t.check(r[0] == r[1] && h[0] == h[1] && calls[0] == calls[1] && h[0] == want && calls[0] == (count ? 1u : 0u), "", m);
+    }
 }
 
 // Slot 32 (precache) with fakes in place of the objects: their slot 7 records the call. On the game's
@@ -847,7 +941,9 @@ ZAX_CHECKS(field_objects)
         bin{"field objects: slots 26/29 of the object, array and class kinds (real data)"},
         slot32{"field objects: slot 32 of the object and array kinds (real data)"},
         errors{"field objects: owned object slot 19, class names and fatal errors"},
-        names{"field objects: class pointer slot 29 with names"};
+        names{"field objects: class pointer slot 29 with names"},
+        trunc{"field objects: array slots 29 on an empty stream (stack pattern)"};
+    g_trunc = &trunc;
     init_stream_vtable();
     const DWORD start = GetTickCount();
     find_owners(cls, n);
@@ -890,6 +986,8 @@ ZAX_CHECKS(field_objects)
     slot32.report();
     errors.report();
     names.report();
+    trunc.report();
+    log("  empty stream: %d descriptors, %u cases, %u names asked", g_trunc_descs, g_trunc_cases, g_trunc_asked);
     log("  owners %d; fields: object %d, pointer array %d, new[] array %d, class %d (%d of world objects not read back); "
         "%d text variants; %u cases, %u bytes; %d deleted owned objects (%d at other addresses on the two sides); "
         "error descriptor %s; %u ms",

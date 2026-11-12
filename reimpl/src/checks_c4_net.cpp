@@ -65,21 +65,24 @@ DWORD THISCALL r_position(void *layer, void *p, float *pos, BYTE *ok)
     ev(0x17, ptrv(layer), ptrv(p), ptrv(ok) != 0);
     return val(0x17);
 }
+// The frame cases (batch decomp-faithful2): the readers called through zax_call_filled, the bool's and the
+// channel's dwords recorded whole (their upper bytes are the fill's at the exe's addresses, the same on both sides)
+bool g_frame;
 DWORD THISCALL s_play_sound(void *layer, DWORD sound, const float *pos, DWORD mode, DWORD keep, DWORD channel)
 {
     ev(0x18, ptrv(layer), sound, pos ? *(const DWORD *)pos ^ ((const DWORD *)pos)[1] : 0xdead);
-    ev(0x19, mode, keep, channel & 0xff);
+    ev(0x19, mode, keep, g_frame ? channel : channel & 0xff);
     return val(0x18);
 }
 DWORD THISCALL s_explosion(void *w, void *layer, DWORD token, DWORD x, DWORD y, int word, DWORD flag, DWORD extra)
 {
     ev(0x1a, ptrv(w), ptrv(layer), token);
-    ev(0x1b, x ^ y, (DWORD)word, (flag & 0xff) ^ (extra << 8));
+    ev(0x1b, x ^ y, (DWORD)word, (g_frame ? flag : flag & 0xff) ^ (extra << 8));
     return val(0x1a);
 }
 DWORD __fastcall s_table_add(void *table, DWORD id, DWORD channel, DWORD lookup)
 {
-    ev(0x1c, ptrv(table), id, (channel & 0xff) ^ (lookup << 8));
+    ev(0x1c, ptrv(table), id, (g_frame ? channel : channel & 0xff) ^ (lookup << 8));
     return val(0x1c);
 }
 DWORD __fastcall s_ini(DWORD a, DWORD b, const char *name, DWORD def)
@@ -213,11 +216,13 @@ void reader_case(int k)
     // the made object's slot 27 (its real vtable 0x5f3aa4)
     stand_in(*at<DWORD *>(0x5f3aa4 + 27 * 4), (void *)&s_beam_read);
     g_made = nullptr;
-    const DWORD r = at<DWORD(THISCALL *)(void *, void *)>(fn)(reader, packet);
+    const DWORD args[1] = {ptrv(packet)};
+    const DWORD r = g_frame ? zax_call_filled(at<void *>(fn), ptrv(reader), args, 1, g_seed ^ 0x5eed)
+                            : at<DWORD(THISCALL *)(void *, void *)>(fn)(reader, packet);
     swap_out();
     // without a layer the full sound reader returns the channel's dword, of which the read set only the low
-    // byte (the original's upper bytes are stack garbage)
-    st(fn == 0x4f8d40 && !g_layer ? r & 0xff : r);
+    // byte (the upper bytes are the stack's: compared in the frame cases, where the stack is filled alike)
+    st(fn == 0x4f8d40 && !g_layer && !g_frame ? r & 0xff : r);
     st_dwords(g_session->mem, 0x100);
     st_dwords(g_sender->mem, 0x100);
     st_dwords(g_control->mem, 0x100);
@@ -415,6 +420,14 @@ void exit_case(int k)
     memcpy(at<void *>(0x6c2960), saved, 0x28);
 }
 
+// The explosion and the full sound reader in the exe's frame, with the stack below the call filled alike
+void frame_case(int k)
+{
+    g_frame = true;
+    reader_case(k % 2 ? 9 : 7);   // READERS[7] 0x4f89a0, READERS[9] 0x4f8d40
+    g_frame = false;
+}
+
 void run(const char *what, int n, unsigned seed0, void (*f)(int))
 {
     run_cases(what, scaled(n), seed0, [f](int k) { f(k); });
@@ -428,6 +441,7 @@ ZAX_CHECKS(c4_net)
     (void)n;
     g_table = hooks_c4_net;
     run("c4 net: block readers' slot 2", 13 * 24, 0x4f7820u, reader_case);
+    run("c4 net: the explosion and sound readers in the exe's frame (stack pattern)", 48, 0x4f89a0u, frame_case);
     run("c4 net: the local net layer's slots", 64, 0x4f7e50u, netlocal_case);
     run("c4 net: ZaxNetGame's slots", 48, 0x5ba830u, netgame_case);
     run("c4 net: GameSpy texts, slot 87, save game callbacks", 48, 0x51ef40u, misc_case);

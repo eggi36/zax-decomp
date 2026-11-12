@@ -23,9 +23,10 @@
 //   0x49cd30 (vtable 0x5f3a98): a new object of 0x13c bytes (CEntityWalking's constructor, vtable
 //     0x5f3aa4, +0x134/+0x138 = -1) reads itself (slot 27) and becomes the last light beam
 // Where the original passes dwords of which a read only set the low byte or word (the bool of the
-// explosion, the channel of the sound) the upper bytes are stack garbage of the original; the
-// reimplementation passes 0 there. The play-sound reader's "keep" argument is the packet argument's stack
-// slot with its low byte replaced, as in the original.
+// explosion, the channel of the sound) the upper bytes are stack garbage of the original; those two readers
+// run in the exe's frame (exe_frame.h) since batch decomp-faithful2, so the garbage is the stack's at the
+// exe's addresses. The play-sound reader's "keep" argument is the packet argument's stack slot with its low
+// byte replaced, as in the original.
 //
 // Not hookable: 0x4f7ef0 (slot 11 of NetLocal: mov ecx, [ecx+4]; jmp NetGame_PlayerCount, a relative
 // jump in the first 5 bytes) and 0x4f8700 (xor al, al; ret: 3 bytes, the save game's third callback).
@@ -34,6 +35,7 @@
 #include "exe_base.h"
 #include "init_list.h"
 #include "x87.h"
+#include "exe_frame.h"
 
 namespace zax {
 namespace {
@@ -141,21 +143,27 @@ DWORD THISCALL ClientSetLayerPartFlag_Read(void *, void *packet)
         return 0;
     return vcall<DWORD>(part, 60, flag);
 }
-// 0x4f89a0
-DWORD THISCALL ServerExplosion_Read(void *, void *packet)
+}  // namespace
+// 0x4f89a0, in the exe's frame (exe_frame.h) [verified 2026-11-12: the instructions 0x4f89a0-0x4f8a30]: `sub esp, 0x18`,
+// the token at [esp + 0xc] (0x4f89b6), the position at [esp + 0x10] (0x4f89c7), the word at [esp + 2] (0x4f89d6), the
+// bool at [esp + 8] (0x4f89e2, read as a byte, passed as the whole dword at 0x4f89fe), the dword at [esp + 4]
+// (0x4f89ee). What a read leaves unset (the bool's upper three bytes always) is whatever the stack held there, as in
+// the original (batch decomp-faithful2; until then the bool's upper bytes were 0 here).
+extern "C" DWORD __cdecl zax_server_explosion_read(void *, void *packet, BYTE *frame)
 {
     BYTE *layer = current_layer();
-    DWORD token = 0, flag = 0, extra;
-    float pos[2];
-    WORD w;
-    read_word_token(packet, &token, glob_addr(0x6cfdd8));
+    void *const token = frame + 0xc, *const w = frame + 2, *const flag = frame + 8, *const extra = frame + 4;
+    BYTE *const pos = frame + 0x10;
+    read_word_token(packet, token, glob_addr(0x6cfdd8));
     read_position(layer, packet, pos, nullptr);
-    read_word(packet, &w);
-    read_bool(packet, &flag);
-    read_dword(packet, &extra);
+    read_word(packet, w);
+    read_bool(packet, flag);
+    read_dword(packet, extra);
     return fn<DWORD(THISCALL *)(void *, void *, DWORD, DWORD, DWORD, int, DWORD, DWORD)>(0x4f6320)(
-        world(), layer, token & 0xffff, *reinterpret_cast<DWORD *>(&pos[0]), *reinterpret_cast<DWORD *>(&pos[1]), (short)w, flag, extra);
+        world(), layer, dw(token, 0) & 0xffff, dw(pos, 0), dw(pos, 4), *static_cast<const short *>(w), dw(flag, 0), dw(extra, 0));
 }
+ZAX_EXE_FRAME_ENTRY(zax_server_explosion_read_entry, zax_server_explosion_read, 0x18, 1, 4)
+namespace {
 // 0x4f8b00. Without a layer the position's dword is skipped (its local set to -1 first).
 DWORD THISCALL ClientPlaySimpleSound_Read(void *, void *packet)
 {
@@ -171,33 +179,40 @@ DWORD THISCALL ClientPlaySimpleSound_Read(void *, void *packet)
     read_position(layer, packet, pos, &slot);
     return play_sound_here(layer, token & 0xffff, (BYTE)slot ? pos : nullptr, 0, 0, 0xff);
 }
-// 0x4f8d40 (this: the reader, its playing table at +0x18)
-DWORD THISCALL ClientPlaySound_Read(BYTE *self, void *packet)
+}  // namespace
+// 0x4f8d40 (this: the reader, its playing table at +0x18), in the exe's frame (exe_frame.h) [verified 2026-11-12: the
+// instructions 0x4f8d40-0x4f8e1e]: `sub esp, 0x18`, the token at [esp + 8] (0x4f8d5a), the position flag byte at
+// [esp + 3] (0x4f8d6d), the position at [esp + 0x10] (0x4f8d78), the mode byte at [esp + 0xc] (0x4f8d9c), the channel
+// at [esp + 4] (0x4f8db9, read as a byte, passed as the whole dword to SoundTable_Add and PlaySoundHere and returned
+// without a layer). The "keep" argument is the packet argument's own slot ([esp + 0x1c]) with its low byte replaced
+// (0x4f8dc1). The channel's upper three bytes are whatever the stack held at [esp + 4], as in the original (batch
+// decomp-faithful2; until then 0 here).
+extern "C" DWORD __cdecl zax_client_play_sound_read(BYTE *self, void *packet, BYTE *frame)
 {
     BYTE *layer = current_layer();
-    DWORD token = 0;
-    read_word_token(packet, &token, glob_addr(0x713708));
-    BYTE has_pos = 0;
-    float pos[2];
-    DWORD slot = as_dw(packet);
+    void *const token = frame + 8, *const mode_byte = frame + 0xc, *const channel = frame + 4;
+    BYTE *const has_pos = frame + 3, *const pos = frame + 0x10;
+    DWORD &slot = dw(frame, 0x1c);   // the packet argument's slot
+    read_word_token(packet, token, glob_addr(0x713708));
+    *has_pos = 0;
     if (layer)
-        read_position(layer, packet, pos, &has_pos);
+        read_position(layer, packet, pos, has_pos);
     else {
         slot = 0xffffffff;
         read_dword(packet, &slot);
     }
-    DWORD mode_byte = 0;
-    read_byte(packet, &mode_byte);
-    const DWORD mode = (mode_byte & 0xff) >> 1;
-    slot = (slot & ~0xffu) | (mode_byte & 1);
-    DWORD channel = 0;
-    read_byte(packet, &channel);
-    if ((BYTE)channel != 0xff)
-        fn<DWORD(__fastcall *)(void *, DWORD, DWORD, DWORD)>(0x4f91a0)(self + 0x18, token & 0xffff, channel, 1);
+    read_byte(packet, mode_byte);
+    const DWORD mode = (dw(mode_byte, 0) & 0xff) >> 1;
+    *reinterpret_cast<BYTE *>(&slot) = (BYTE)(dw(mode_byte, 0) & 1);
+    read_byte(packet, channel);
+    if ((BYTE)dw(channel, 0) != 0xff)
+        fn<DWORD(__fastcall *)(void *, DWORD, DWORD, DWORD)>(0x4f91a0)(self + 0x18, dw(token, 0) & 0xffff, dw(channel, 0), 1);
     if (!layer)
-        return channel;   // eax: the channel's dword (reloaded after the add)
-    return play_sound_here(layer, token & 0xffff, has_pos ? pos : nullptr, mode, slot, channel);
+        return dw(channel, 0);   // eax: the channel's dword (reloaded after the add)
+    return play_sound_here(layer, dw(token, 0) & 0xffff, *has_pos ? pos : nullptr, mode, slot, dw(channel, 0));
 }
+ZAX_EXE_FRAME_ENTRY(zax_client_play_sound_read_entry, zax_client_play_sound_read, 0x18, 1, 4)
+namespace {
 // 0x4f9320. The index goes into the packet argument's stack slot.
 DWORD THISCALL ClientPlayVO_Read(void *, void *packet)
 {

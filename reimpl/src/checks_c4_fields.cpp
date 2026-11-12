@@ -320,14 +320,18 @@ void test_plain(Tally &t, CClassInfo **cls, int n)
                     if (v == 1)
                         for (DWORD i = 0; i < 16; i++)
                             in[i] = (BYTE)random();
-                    if (v == 2)
-                        nin = 0;
+                    if (v == 2)   // an empty stream (the colour: 0-2 bytes)
+                        nin = k.read == 0x46dfe0 ? seed % 3 : 0;
                     DWORD pos[2];
                     for (int side = 0; side < 2; side++) {
                         fill_object(side, seed + 1);
                         open_memory(&g_file_slot[side].file, in, nin);
                         begin(side, 0x12);
-                        const DWORD r = at<DWORD(THISCALL *)(void *, void *, void *)>(k.read)(g_desc, g_o[side], &g_file_slot[side].file);
+                        // the colour read through zax_call_stack's fill (batch decomp-faithful2): the bytes a short
+                        // stream leaves unread are the fill's at the exe's [esp + 0..2], the same on both sides
+                        const DWORD args[2] = {(DWORD)(uintptr_t)g_o[side], (DWORD)(uintptr_t)&g_file_slot[side].file};
+                        const DWORD r = k.read == 0x46dfe0 ? zax_call_filled(at<void *>(k.read), (DWORD)(uintptr_t)g_desc, args, 2, seed * 3u + 0x46dfe0u)
+                                                           : at<DWORD(THISCALL *)(void *, void *, void *)>(k.read)(g_desc, g_o[side], &g_file_slot[side].file);
                         // the colour read returns FieldColor_SetRGBA's eax (the value's flags dword +0xc, a
                         // byte of the random fill, with al 1), never a pointer: compared as it is (made relative,
                         // a fill dword that happened to lie in one side's arena differed, runs
@@ -336,9 +340,6 @@ void test_plain(Tally &t, CClassInfo **cls, int n)
                         end(side);
                         pos[side] = g_pos[side];
                     }
-                    // a short colour read leaves stack bytes in the colour (not reproduced): only whole ones
-                    if (v == 2 && k.read == 0x46dfe0)
-                        continue;
                     // the region first, so the message names its difference (not the previous case's)
                     g_diff_at = g_diff_a = g_diff_b = 0;
                     const bool same = same_region(g_o[0], g_o[1], OBJ);
