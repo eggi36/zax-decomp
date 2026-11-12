@@ -1,6 +1,6 @@
 // Hook table of models.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of the
 // overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x41f240, (void *)&OtherMapList_ClassInfo, "COtherMapList::ClassInfo2", 5, {0xa1, 0x38, 0xe9, 0x62, 0x00, 0x56, 0x85, 0xc0}},
         {0x41f290, (void *)&OtherMapList_Create, "COtherMapList::Create", 6, {0x56, 0xb9, 0x18, 0x00, 0x00, 0x00, 0xe8, 0x75}},
         {0x41f2e0, (void *)&OtherMapList_CreateArray, "COtherMapList::CreateArray", 5, {0x51, 0x55, 0x56, 0x8b, 0xf1, 0x8d, 0x04, 0x76}},

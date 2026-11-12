@@ -11,7 +11,8 @@
 #    temporary folder; linked at 0x400000, then the original's header values (no ASLR, no DEP, version 4.0).
 # Nothing of Zax.exe is in the repository; the built exe holds its icon, strings and version and the initial bytes of
 # the exe's data (own_blocks.cpp, in the build's temporary folder). At run time it needs no Zax.exe (since batch 6-10c).
-ZAX_EXE=${ZAX_EXE:-"$GAME_DATA/Zax - German/Zax.exe"}
+# The user's Zax.exe: ZAX_EXE, else the build 1308 exe below GAME_DATA, found by its hash (tools/game_paths.py)
+ZAX_EXE=${ZAX_EXE:-$(ZAX_GAME_DATA="$GAME_DATA" python3 -I ../tools/game_paths.py exe 1308)} || exit 1
 [ -f "$ZAX_EXE" ] || { echo "Zax.exe not found (ZAX_EXE=...)" >&2; exit 1; }
 PY=${PYTHON:-}
 if [ -z "$PY" ]; then

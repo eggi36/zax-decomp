@@ -6,7 +6,7 @@ Sources (in order of precedence):
 3. the vtables themselves: every function in a vtable belongs to the lowest common parent class of
    all classes whose vtable contains it; named after its slot (``vf<n>``).
 
-    .venv/bin/python -I tools/ghidra_names.py ['gamedata/Zax - German/Zax.exe']
+    .venv/bin/python -I tools/ghidra_names.py ["$(python3 -I tools/game_paths.py exe)"]
 
 writes ``out/ghidra/names.tsv`` (address, namespace, name, kind, source), which
 ``tools/ghidra/ZaxNames.java`` imports into Ghidra.
@@ -17,6 +17,8 @@ import csv
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import pefile
 
@@ -24,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def main(argv):
-    exe_path = Path(argv[1]) if len(argv) > 1 else ROOT / 'gamedata' / 'Zax - German' / 'Zax.exe'
+    exe_path = Path(argv[1]) if len(argv) > 1 else Path(game_paths.exe_arg())
     data = exe_path.read_bytes()
     pe = pefile.PE(data=data, fast_load=True)
     base = pe.OPTIONAL_HEADER.ImageBase

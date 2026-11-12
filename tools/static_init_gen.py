@@ -38,6 +38,8 @@ import re
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -667,7 +669,7 @@ def hook_entry(exe: Exe2, a: int, name: str) -> str:
 # ---- Main ---------------------------------------------------------------------------------------------------
 
 def main() -> None:
-    exe = Exe2(ROOT / 'gamedata/Zax - German/Zax.exe')
+    exe = Exe2(Path(game_paths.exe_arg()))
     names, sizes = load_names(), load_sizes()
     rows = c2_rows()
     funcs, not_c2, unhookable = [], [], []

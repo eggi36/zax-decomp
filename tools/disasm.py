@@ -1,7 +1,8 @@
 """Disassemble functions of Zax.exe, annotated with names from docs/functions.csv and strings.
 
-    .venv/bin/python -I tools/disasm.py 'gamedata/Zax - German/Zax.exe' 0x415780 [0x415700 ...]
-    .venv/bin/python -I tools/disasm.py 'gamedata/Zax - German/Zax.exe' 0x4154d0-0x415970   # range, linear
+    .venv/bin/python -I tools/disasm.py "$(python3 -I tools/game_paths.py exe)" 0x415780 [0x415700 ...]
+    .venv/bin/python -I tools/disasm.py "$(python3 -I tools/game_paths.py exe)" 0x4154d0-0x415970   # range, linear
+    .venv/bin/python -I tools/disasm.py 0x415780   # without the exe: the build 1308 exe of tools/game_paths.py
 
 A function's length comes from docs/functions.csv (column size), otherwise up to the first ret.
 """
@@ -11,6 +12,8 @@ import csv
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -51,9 +54,15 @@ def show(exe: Exe, lo: int, hi: int | None, name: dict[int, str]) -> None:
 
 
 def main() -> None:
-    exe = Exe(Path(sys.argv[1]))
+    # the exe path may be left out: the build 1308 exe of tools/game_paths.py
+    args = sys.argv[1:]
+    if args and not args[0].lower().startswith('0x'):
+        exe_path, args = args[0], args[1:]
+    else:
+        exe_path = game_paths.exe_arg()
+    exe = Exe(Path(exe_path))
     name, size = load_names()
-    for arg in sys.argv[2:]:
+    for arg in args:
         if '-' in arg:
             lo, hi = (int(x, 16) for x in arg.split('-'))
         else:

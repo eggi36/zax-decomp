@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
-EXE="$ROOT/gamedata/Zax - German/Zax.exe"
+EXE=$(python3 -I tools/game_paths.py exe 1308) || exit 1   # the build 1308 exe (tools/game_paths.py; ZAX_EXE first)
 export GHIDRA_INSTALL_DIR=${GHIDRA_INSTALL_DIR:-/opt/homebrew/opt/ghidra/libexec}
 export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}
 HEADLESS="$GHIDRA_INSTALL_DIR/support/analyzeHeadless"

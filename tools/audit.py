@@ -31,6 +31,8 @@ import re
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 
@@ -300,9 +302,10 @@ def gaps(exe, funcs, reimpl):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--summary', action='store_true')
     args = ap.parse_args()
+    args.exe = args.exe or game_paths.exe_arg()
     exe = Exe(Path(args.exe))
     rows = list(csv.DictReader(open(ROOT / 'docs/functions.csv')))
     reimpl = {int(r['address'], 16): r for r in csv.DictReader(open(ROOT / 'docs/reimpl.csv'))}

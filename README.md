@@ -22,7 +22,7 @@ This is the faithful base: a decompilation whose code follows Zax.exe's structur
 1. macOS with `brew install llvm zig` (the reimplementation builds with clang for the MSVC ABI, linked with zig).
 2. Python 3.10 or newer: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`.
 3. zax-formats next to this repository (or `ZAX_FORMATS`): `tools/exe_classes.py` uses its `zaxtools`.
-4. The game data of your own copy in `gamedata/Zax - German/` (`Zax.exe`, `DATA.dat`), never committed.
+4. The game data of your own copy in a folder below `gamedata/` (any name: `Zax.exe` build 1308, `DATA.dat`), never committed. The tools find the exe by its hash (`tools/game_paths.py`; `ZAX_EXE` or `gamedata/paths.json` name it explicitly).
 5. Build: `reimpl/build.sh` (DLL), `reimpl/build.sh --exe` (standalone exe).
 6. `git config core.hooksPath tools/git-hooks` (the pre-push hook: no game data, no private names or paths).
 

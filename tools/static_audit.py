@@ -32,7 +32,7 @@ An open difference may carry a hint (a likely reason the tool cannot prove). The
     summary.md        counts per subsystem and file, the rules and how many differences each explained
     partitions.json   the open differences in PARTS parts of about equal review work, by subsystem and module
 
-The exe is --exe, else ZAX_EXE, else gamedata/Zax - German/Zax.exe of this repository (as the other tools);
+The exe is --exe, else the build 1308 exe of tools/game_paths.py (ZAX_EXE first; as the other tools);
 the output folder is --out, else runs/static-audit/ of the workspace (the folder the repositories sit in).
 """
 from __future__ import annotations
@@ -48,6 +48,8 @@ import struct
 import subprocess
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 from capstone import x86 as X
@@ -2230,10 +2232,11 @@ def compare(a, ef, cc, ctx):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--exe', default=os.environ.get('ZAX_EXE') or str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--out', default=None)
     ap.add_argument('--only', nargs='*', default=None, help='addresses to compare (prints them)')
     args = ap.parse_args()
+    args.exe = args.exe or game_paths.exe_arg()
     exe = ExeModel(args.exe)
     layout = Layout()
     frows = list(csv.DictReader(open(ROOT / 'docs/functions.csv')))

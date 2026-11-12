@@ -1,6 +1,6 @@
 // Hook table of part_list.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of the
 // overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x59a0f0, ptr(&P::SetStamp), "PartList::SetStamp", 8, {0x8b, 0x51, 0x08, 0x56, 0x8b, 0x74, 0x24, 0x08}},
         {0x59a120, ptr(&P::Clear), "PartList::Clear", 5, {0x56, 0x8b, 0xf1, 0x8b, 0x06, 0xff, 0x50, 0x04}},
         {0x59a140, ptr(&P::AddNew), "PartList::AddNew", 7, {0x8b, 0x44, 0x24, 0x04, 0x83, 0xec, 0x08, 0x56}},

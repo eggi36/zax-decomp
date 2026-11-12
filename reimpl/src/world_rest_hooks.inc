@@ -1,6 +1,6 @@
 // Hook table of world_rest.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of the
 // overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call among them;
-// lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x4f13a0, (void *)&W::LoadGameData, "World::LoadGameData", 7, {0x8b, 0x44, 0x24, 0x04, 0x83, 0xec, 0x78, 0x53}},
         {0x4f0230, (void *)&W::MultiplayerFrame, "WorldRest::MultiplayerFrame", 5, {0x83, 0xec, 0x30, 0x53, 0x55, 0x56, 0x8b, 0xf1}},
         {0x4f0ac0, (void *)&W::PropertiesPath, "WorldRest::PropertiesPath", 5, {0x53, 0x56, 0x57, 0x8b, 0xda, 0x8b, 0xf9, 0xe8}},

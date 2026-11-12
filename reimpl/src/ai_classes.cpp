@@ -1765,7 +1765,7 @@ static DWORD __cdecl TouchingPolygonTriggerAI_RegisterFields()
 
 
 // Hooks of this module (collected by build.sh, see ZAX_HOOKS in reimpl.h); lengths and bytes read from
-// gamedata/Zax - German/Zax.exe with capstone
+// Zax.exe build 1308 (SHA-1 a918c784) with capstone
 ZAX_HOOKS(ai_classes)
 {
     const Hook list[] = {

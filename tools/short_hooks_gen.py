@@ -30,6 +30,8 @@ import re
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 
@@ -162,10 +164,11 @@ def case_info(gen, a, n):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--clang', default=sorted(Path('/opt/homebrew/opt').glob('llvm*/bin/clang'))[-1].as_posix())
     ap.add_argument('--list', action='store_true')
     args = ap.parse_args()
+    args.exe = args.exe or game_paths.exe_arg()
     from exe_classes import Exe
     exe = Exe(Path(args.exe))
     funcs = select(exe)

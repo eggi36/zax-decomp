@@ -24,7 +24,7 @@ references (the source, the exe's code, a pointer in the data, a named symbol), 
 Writes docs/phase6_inventory.csv (kind, address, size, section, name, counts; never the exe's bytes: only
 how many of them are non-zero) and prints the summary tables of the section.
 
-    .venv/bin/python -I tools/phase6_inventory.py [--exe 'gamedata/Zax - German/Zax.exe'] [--csv docs/phase6_inventory.csv]
+    .venv/bin/python -I tools/phase6_inventory.py [--exe "$(python3 -I tools/game_paths.py exe)"] [--csv docs/phase6_inventory.csv]
 """
 import argparse
 import bisect
@@ -34,6 +34,8 @@ import re
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 from capstone import x86
@@ -282,9 +284,10 @@ def scan_exe(exe, functions):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--csv', default=str(ROOT / 'docs/phase6_inventory.csv'))
     args = ap.parse_args()
+    args.exe = args.exe or game_paths.exe_arg()
     exe = Exe(Path(args.exe))
 
     funcs = {int(r['address'], 16): r for r in read_csv('functions.csv')}
