@@ -1,6 +1,6 @@
 // Hook table of world_update.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of
 // the overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x4e8810, (void *)&World_MarkDynamicDirty, "World_MarkDynamicDirty", 6, {0x83, 0xec, 0x10, 0x53, 0x8b, 0xd9, 0x56, 0x57}},
         {0x4e91e0, (void *)&S::SweepBounce, "CLayerSaveData::SweepBounce", 6, {0x81, 0xec, 0xac, 0x00, 0x00, 0x00, 0x53, 0x55}},
         {0x4e96c0, (void *)&zax_save_data_bounce_entry, "CLayerSaveData::Bounce", 5, {0x83, 0xec, 0x44, 0x53, 0x56, 0x57, 0x8b, 0xd9}},

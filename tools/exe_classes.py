@@ -12,7 +12,7 @@ constructor writes to ``[this]`` is the class's own. The field registration crea
 per field (``Ctor(name, [extra,] offset, size, offset, [bit mask], ...)``) and appends it with
 ``ClassInfo_AddField`` (0x415700).
 
-    .venv/bin/python -I tools/exe_classes.py 'gamedata/Zax - German/Zax.exe'
+    .venv/bin/python -I tools/exe_classes.py "$(python3 -I tools/game_paths.py exe)"
 
 writes ``docs/classes.csv`` and ``docs/fields.csv``. Needs capstone and pefile.
 """
@@ -23,6 +23,8 @@ import re
 import struct
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 import pefile
@@ -201,7 +203,7 @@ def fields_of(exe, regfn):
 
 
 def main(argv):
-    exe_path = Path(argv[1]) if len(argv) > 1 else ROOT / 'gamedata' / 'Zax - German' / 'Zax.exe'
+    exe_path = Path(argv[1]) if len(argv) > 1 else Path(game_paths.exe_arg())
     exe = Exe(exe_path)
     regs = registrations(exe)
     var2name = {}

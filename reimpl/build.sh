@@ -9,7 +9,7 @@
 #        reimpl/build.sh --exe [output dir]   the standalone exe Zax-Standalone.exe instead (default: out/standalone;
 #        docs/DECOMPILATION.md 13, batch 6-1): the production modules without the checks and main.cpp, the loader of
 #        standalone/, the launcher's switches built in; needs the user's Zax.exe at build time for the icon, the
-#        string table and the version (ZAX_EXE, default GAME_DATA/Zax - German/Zax.exe, see below) and next to the exe at run time
+#        string table and the version (ZAX_EXE, default the build 1308 exe below GAME_DATA found by tools/game_paths.py, see below) and next to the exe at run time
 # ZAX_KEEP_TMP=dir (an absolute path) copies the build's temporary folder (the objects, the generated includes) there at the end, for
 # tools/mmx_x87_scan.py (a folder outside the repository's tracked files, e.g. below out/)
 # Reproducible: the same sources, game data and tools give the same bytes from any folder (docs/DECOMPILATION.md
@@ -17,7 +17,7 @@
 # the locale's collation (en_US/de_DE.UTF-8 put ai_chase_scan.cpp before ai_chase.cpp, C after it): fixed to C.
 # The game data folder (ZAX_GAME_DATA; default gamedata/ of the checkout, else that of the main checkout when this
 # is a git worktree) supplies Zax.exe for --exe; the DLL takes nothing from it (until 2026-11-01 it embedded Local.txt
-# of GERMAN.RED for the Local.txt checks, now zax-testtools/tools/vmtest.py sends that file with the job).
+# of the German language pack for the Local.txt checks, now zax-testtools/tools/vmtest.py sends that file with the job).
 set -e
 export LC_ALL=C
 cd "$(dirname "$0")"

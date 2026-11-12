@@ -1,6 +1,6 @@
 // Hook table of waypoint_map.cpp (included into its ZAX_HOOKS list): address, replacement, name, length
 // of the overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative
-// call among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// call among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x5365d0, (void *)&Path_ClassInfo, "CWayPointPath::ClassInfo2", 5, {0xa1, 0x5c, 0x06, 0x6d, 0x00, 0x56, 0x85, 0xc0}},
         {0x536620, (void *)&Path_Create, "CWayPointPath::Create", 6, {0x56, 0xb9, 0x34, 0x00, 0x00, 0x00, 0xe8, 0xe5}},
         {0x536650, (void *)&Path_CreateArray, "CWayPointPath::CreateArray", 6, {0x57, 0x8b, 0xf9, 0x8d, 0x04, 0x7f, 0x8d, 0x0c}},

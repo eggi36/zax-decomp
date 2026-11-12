@@ -1,6 +1,6 @@
 // Hook table of world_class.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of
 // the overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x4f0780, (void *)&W::Ctor, "World::Ctor", 8, {0x8b, 0x44, 0x24, 0x0c, 0x8b, 0x54, 0x24, 0x08}},
         {0x4f0c50, (void *)&W::DeletingDtor, "World::DeletingDtor", 8, {0x56, 0x8b, 0xf1, 0xe8, 0x18, 0x00, 0x00, 0x00}, 4},
         {0x4f0c70, (void *)&W::Dtor, "World::Dtor", 5, {0x83, 0xec, 0x10, 0x53, 0x55, 0x56, 0x8b, 0xf1}},

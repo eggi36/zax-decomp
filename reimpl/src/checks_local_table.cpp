@@ -8,7 +8,7 @@
 //    parts over several lines (also empty lines and an empty first line), keys with "[END]" inside
 //    or twice, LF-only line ends (one line up to the end), a line too long for the reader, 9-47
 //    generated pairs (the growth at 10, 20, …), missing files, relative names (disk, archives, pack),
-//    and the real Local.txt of the language pack GERMAN.RED (687 pairs; the game folder has no language pack, so
+//    and the real Local.txt of the German language pack (687 pairs; the game folder has no language pack, so
 //    zax-testtools/tools/vmtest.py sends it with every --reimpl job as Zax-Reimpl-Local.txt next to Zax.exe; until 2026-11-01
 //    build.sh embedded it, which tied the DLL's bytes to the game data); in sequences so old entries are freed and a failed Load translates
 //    with the old ones. Before each Load the registered strings point to a list of our own (or none,
@@ -40,8 +40,8 @@ int hooks_local_table(Hook *out);
 
 namespace {
 
-// The real Local.txt: Zax-Reimpl-Local.txt next to Zax.exe (zax-testtools/tools/vmtest.py copies it from GERMAN.RED), 0 bytes
-// without it (58,542 bytes in GERMAN.RED)
+// The real Local.txt: Zax-Reimpl-Local.txt next to Zax.exe (zax-testtools/tools/vmtest.py copies it from the German language pack), 0 bytes
+// without it (58,542 bytes in that pack)
 char g_real[128 * 1024];
 DWORD g_real_size;
 

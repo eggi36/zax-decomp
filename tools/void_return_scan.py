@@ -55,7 +55,7 @@ Replacements written in assembly (labels of the sources' asm blocks, `naked` fun
 and are not scanned; the library replacements of zlib and Ogg Vorbis (C variables naming the original functions) are
 compiled from the original sources and keep their types.
 
-    .venv/bin/python -I tools/void_return_scan.py [--exe 'gamedata/Zax - German/Zax.exe'] [--jobs 8] [--verbose]
+    .venv/bin/python -I tools/void_return_scan.py [--exe "$(python3 -I tools/game_paths.py exe)"] [--jobs 8] [--verbose]
         [--assume-void 0x49b1d0]     (shows a known case: batch 6-12's TurnDischarge as it was)
         [--no-sources]               (parts 1-4 and 6 only, without the clang runs over the sources)
 
@@ -75,6 +75,8 @@ import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 from capstone import x86
@@ -1008,13 +1010,14 @@ def origin_kind(o) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--jobs', type=int, default=8)
     ap.add_argument('--verbose', action='store_true', help='print every call site with a read')
     ap.add_argument('--assume-void', default='', help='comma-separated addresses to treat as declared void (to show '
                     'that the scan finds a known case, e.g. 0x49b1d0, the TurnDischarge of batch 6-12)')
     ap.add_argument('--no-sources', action='store_true', help='stop before the reimplementation\'s own calls (parts 5, 7, 8)')
     args = ap.parse_args(argv)
+    args.exe = args.exe or game_paths.exe_arg()
 
     hooks = hook_table(args.jobs)
     by_addr = {}

@@ -20,7 +20,7 @@ Two steps:
            addresses of docs/reimpl.csv (the function table's keys), the vtables, the data sections' bounds and the
            blocks whose home is `own` (the standalone exe's own definitions, tools/extract_exe_data.py).
 
-    .venv/bin/python -I tools/exe_layout.py layout [--exe 'gamedata/Zax - German/Zax.exe']
+    .venv/bin/python -I tools/exe_layout.py layout [--exe "$(python3 -I tools/game_paths.py exe)"]
     python3 -I tools/exe_layout.py tables OUTDIR
 """
 import argparse
@@ -30,6 +30,8 @@ import csv
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / 'docs'
@@ -414,10 +416,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
     p = sub.add_parser('layout')
-    p.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    p.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     p = sub.add_parser('tables')
     p.add_argument('out')
     args = ap.parse_args()
+    if args.cmd == 'layout':
+        args.exe = args.exe or game_paths.exe_arg()
     {'layout': layout, 'tables': tables}[args.cmd](args)
 
 

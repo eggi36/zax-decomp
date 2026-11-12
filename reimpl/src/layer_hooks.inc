@@ -1,6 +1,6 @@
 // Hook table of layer.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of the
 // overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x4e5160, (void*)&Custom_ClassInfo, "CLayerCustomSaveData::ClassInfo", 5, {0xa1, 0xec, 0x1c, 0x6c, 0x00, 0x56, 0x85, 0xc0}},
         {0x4e5210, (void*)&SaveData_Create, "CLayerSaveData::Create", 5, {0xb9, 0x90, 0x01, 0x00, 0x00, 0xe8, 0xf6, 0x24}},
         {0x4e5230, (void*)&SaveData_CreateArray, "CLayerSaveData::CreateArray", 6, {0x56, 0x8b, 0xf1, 0x8d, 0x04, 0xb6, 0x8d, 0x04}},

@@ -1,6 +1,6 @@
 // Hook table of plasma_tile_map.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of the
 // overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x53f490, ptr(&P::Ctor), "CPlasmaTileMap::Ctor", 5, {0x53, 0x56, 0x57, 0x8b, 0xf1, 0xe8, 0x76, 0x71}},
         {0x53f6d0, ptr(&P::Dtor), "CPlasmaTileMap::Dtor", 5, {0x53, 0x56, 0x8b, 0xf1, 0x57, 0xc7, 0x06, 0x98}},
         {0x53f660, ptr(&P::Precache), "CPlasmaTileMap::Precache", 8, {0x56, 0x8b, 0xf1, 0xe8, 0x48, 0x71, 0xed, 0xff}, 4},

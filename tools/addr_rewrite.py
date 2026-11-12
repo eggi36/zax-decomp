@@ -35,6 +35,8 @@ import difflib
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / 'reimpl/src'
@@ -1026,9 +1028,9 @@ def main():
                     help='with --audit: the blocks whose every use in the production code (and the built-in launcher code) '
                          'goes through the layer, i.e. the ones whose home may become `own`')
     ap.add_argument('--src', type=Path, help='the source folder (default reimpl/src)')
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'),
+    ap.add_argument('--exe', default=None,
                     help='with --movable: the exe whose code that still runs in the standalone exe is disassembled for the '
-                         'data it reads (needs the venv: capstone)')
+                         'data it reads (needs the venv: capstone; default: the build 1308 exe of tools/game_paths.py)')
     args = ap.parse_args()
     global SRC
     if args.src:
@@ -1042,7 +1044,7 @@ def main():
         # then standalone/launcher.cpp goes through the layer
         pins = []
         if args.movable:
-            pins += kept_code_data(Path(args.exe), kinds)
+            pins += kept_code_data(Path(args.exe or game_paths.exe_arg()), kinds)
         sys.exit(1 if audit(args.files or production_files(), kinds, names, args.movable, pins) else 0)
     if not args.files:
         ap.error('files to rewrite')

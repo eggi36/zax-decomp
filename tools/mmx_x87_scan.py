@@ -10,9 +10,9 @@ after the rows' MMX spans, where the original compares once before any drawing.
 
 Usage (the objects of a build, kept with ZAX_KEEP_TMP, an absolute path, see reimpl/build.sh):
     ZAX_KEEP_TMP=$PWD/out/build-dll reimpl/build.sh
-    .venv/bin/python -I tools/mmx_x87_scan.py 'gamedata/Zax - German/Zax.exe' out/build-dll
+    .venv/bin/python -I tools/mmx_x87_scan.py "$(python3 -I tools/game_paths.py exe)" out/build-dll
     ZAX_EXE=... ZAX_KEEP_TMP=$PWD/out/build-exe reimpl/build.sh --exe
-    .venv/bin/python -I tools/mmx_x87_scan.py 'gamedata/Zax - German/Zax.exe' out/build-exe \\
+    .venv/bin/python -I tools/mmx_x87_scan.py "$(python3 -I tools/game_paths.py exe)" out/build-exe \\
         --fn-layer out/build-exe/addr_layer.inc --risky blit_rest4b.o,rle16.o,spans_mmx.o,spans_mmx_opacity.o
 Options: -v lists the functions that may return with the MMX state set; --no-tables leaves out step 5 below.
 
@@ -51,6 +51,8 @@ import struct
 import sys
 from collections import defaultdict
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 import pefile

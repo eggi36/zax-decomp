@@ -15,7 +15,7 @@ branch or a replaced address must have the original's bytes (the replaced ones t
 apart from the external jumps); a branch from anywhere in the ranges into the first five bytes of a
 hooked entry point is an error (the hook's jump would be entered in the middle).
 
-Usage: tools/crt_asm_gen.py [--exe 'gamedata/Zax - German/Zax.exe'] [--clang PATH]   (writes reimpl/src/crt_x87.cpp,
+Usage: tools/crt_asm_gen.py [--exe "$(python3 -I tools/game_paths.py exe)"] [--clang PATH]   (writes reimpl/src/crt_x87.cpp,
 reimpl/src/crt_seh.cpp)
 """
 import argparse
@@ -26,6 +26,8 @@ import sys
 import tempfile
 import textwrap
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import game_paths  # noqa: E402
 
 import capstone
 import pefile
@@ -590,9 +592,10 @@ def verify(gen, body, clang):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--exe', default=str(ROOT / 'gamedata/Zax - German/Zax.exe'))
+    ap.add_argument('--exe', default=None, help='default: the build 1308 exe of tools/game_paths.py')
     ap.add_argument('--clang', default=sorted(Path('/opt/homebrew/opt').glob('llvm*/bin/clang'))[-1].as_posix())
     args = ap.parse_args()
+    args.exe = args.exe or game_paths.exe_arg()
     names = load_names()
     ok = True
     for mod in MODULES:

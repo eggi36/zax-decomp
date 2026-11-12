@@ -1,6 +1,6 @@
 // Hook table of layer_update.cpp (included into its ZAX_HOOKS list): address, replacement, name, length of
 // the overwritten instructions, the first 8 bytes of the original and the offset + 1 of a relative call
-// among them; lengths and bytes read from gamedata/Zax - German/Zax.exe with capstone.
+// among them; lengths and bytes read from Zax.exe build 1308 (SHA-1 a918c784) with capstone.
         {0x4e71b0, (void *)&U::FirstUpdate, "CLayerSaveData::FirstUpdate", 5, {0x83, 0xec, 0x1c, 0x53, 0x55, 0x56, 0x8b, 0xf1}},
         {0x4e74a0, (void *)&U::WorldUpdate, "CLayerSaveData::WorldUpdate", 7, {0x83, 0xec, 0x24, 0x8b, 0x44, 0x24, 0x28, 0x53}},
         {0x4e76e0, (void *)&U::OnPartFlags, "CLayerSaveData::OnPartFlags", 6, {0x8b, 0x0d, 0x80, 0x20, 0x6c, 0x00, 0x53, 0x8b}},
