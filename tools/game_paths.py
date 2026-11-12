@@ -7,7 +7,7 @@ Usage from Python (this repository's tools put tools/ on sys.path):
     game_paths.game_dir()       # its game folder: the 1308 exe with the reference DATA.dat (the German data set)
     game_paths.data_dat()       # DATA.dat of that folder
     game_paths.lang_pack()      # its language pack (*.RED, any case; the last in mount order) or None
-    game_paths.exe_for('1314')  # another edition by its key in BUILDS (1305, 1309, 1309-es, 1314, ...)
+    game_paths.exe_for('1314')  # another edition by its key in BUILDS (1305, 1309, 1309-es, 1309-fr, 1314, ...)
 From a shell:
     python3 -I tools/game_paths.py exe [BUILD]     (also: dir, data, pack, root, list, verify; -v: debug lines)
 
@@ -53,6 +53,7 @@ BUILDS = {
     '1305': ('f41436975b64405077646d81efa4469c28972f2d', 'build 1305, German CD (SecuROM)', None),
     '1309': ('a2b2bf17285cc9e515d4e42811e9cd70e60c2ff1', 'build 1309, Polish (no copy protection)', None),
     '1309-es': ('f268d7a7de130799c3586838b022fee1b72ba3c8', 'build 1309, Spanish CD (SecuROM)', None),
+    '1309-fr': ('6cf0554d37fcc2a1d709e17b49fd9a48f3fb5d84', 'build 1309, French CD (SecuROM)', None),
     '1314': ('09a10b67211b46222519c850dfb6fd1e662f894a', 'build 1314, Chinese Simplified', None),
     'demo-0719': ('ca98a54cacde9496930f30cf00f37f0b8fa6c259', 'build 950, demo 2001-07-19', None),
     'demo-0701': ('deb4bf00231dade7b03ab3234b78b3a508b1d398', 'build 890, demo 2001-07-01', None),
