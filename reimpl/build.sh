@@ -41,9 +41,12 @@ trap '[ -n "$ZAX_KEEP_TMP" ] && mkdir -p "$ZAX_KEEP_TMP" && cp -R "$TMP"/. "$ZAX
 # x87 instead of SSE: the exe computes with the FPU (80 bit internally), the reimplementation must
 # round the same way. With the MSVC ABI long double is otherwise only 64 bit; -mlong-double-80 only
 # applies internally (the exe never passes long double, floating-point results come back in st(0)).
+# -fno-delete-null-pointer-checks: VC++ 6 never takes a dereference as proof that a pointer is not null, so the
+# exe keeps every null test and makes every access through a null pointer; clang otherwise drops a null path
+# whose pointer is dereferenced afterwards (docs/DECOMPILATION.md 16, "Batch nulltest"). Also for the libraries.
 CXXFLAGS="-target i386-pc-windows-msvc -march=pentiumpro -mno-sse -mlong-double-80 -O2 -std=c++20 -Wall -Wextra
   -ffreestanding -fno-builtin -fno-exceptions -fno-rtti -fno-stack-protector -mno-stack-arg-probe
-  -ffp-contract=off"
+  -ffp-contract=off -fno-delete-null-pointer-checks"
 # The address layer's keys for reimpl.h (docs/DECOMPILATION.md 13, "Batch 6-3"): docs/reimpl.csv and docs/exe_layout.csv
 python3 -I ../tools/exe_layout.py tables "$TMP" >/dev/null
 # Class variables of all registered classes for the checks (checks.cpp)
@@ -66,7 +69,7 @@ awk -F, 'NR > 1 && ($3 == "identical by bytes" || $3 == "covered by caller" || $
 # (_chkstk in lib_vorbis.cpp); -w: the sources are K&R-era C.
 LIBCFLAGS="-target i386-pc-windows-msvc -march=pentiumpro -Xclang -target-feature -Xclang +sse2
   -Xclang -fdefault-calling-conv=fastcall -fpack-struct=4 -mlong-double-80 -O2 -std=gnu89 -w -ffreestanding -fno-builtin
-  -fno-stack-protector -ffp-contract=off -fno-vectorize -fno-slp-vectorize -fms-extensions -nostdlibinc
+  -fno-stack-protector -ffp-contract=off -fno-delete-null-pointer-checks -fno-vectorize -fno-slp-vectorize -fms-extensions -nostdlibinc
   -isystem src/libc -isystem $("$CLANG" -print-resource-dir)/include -Ithird_party/zlib-1.1.3
   -Ithird_party/libogg-1.0beta4/include -Ithird_party/libvorbis-1.0beta4/include -Ithird_party/libvorbis-1.0beta4/lib"
 # The standalone exe: standalone/build_exe.sh with the flags above (the same compiler flags as the DLL)
