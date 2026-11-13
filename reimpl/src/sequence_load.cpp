@@ -157,30 +157,101 @@ static bool THISCALL Sequence_LoadCacheBool(BYTE *seq, const char *path, const c
 // 0x56b9d0 (slot 15; file buffer): the bounding rectangle (0x10 bytes at +0xc), then per frame a byte (0: none)
 // and the frame (a new CFrame read by 0x4a9340); a failed frame frees the frames, al 0. The byte is read into
 // the file argument's stack slot, so after the end of the file the pointer's low byte decides.
-static BYTE THISCALL Sequence_ReadBinary(BYTE *seq, void *file)
+// Written as the exe's instructions (batch nulltest, docs/DECOMPILATION.md section 16): on a stream that ends,
+// CFrame::ReadFrm 0x4a9340 tests and takes its header from its own stack slots, which its failed read leaves as the
+// stack had them. A C++ body calls it at the compiler's depth (one dword deeper: the byte's own local), so it read
+// other bytes than in the exe; here every push and call is the exe's, so 0x4a9340 and the callees before it run at
+// the exe's depth. Calls go through eax where the exe's relative call leaves eax free (ZAX_ASM_CODE_ATT).
+__attribute__((naked)) static BYTE THISCALL Sequence_ReadBinary(BYTE *, void *)
 {
-    fn<DWORD(THISCALL *)(void *, void *, DWORD)>(0x4a1b00)(file, seq + 0xc, 0x10);
-    DWORD *frames = static_cast<DWORD *>(heap_alloc(dw(seq, 0x28) * 4));
-    memset(frames, 0, dw(seq, 0x28) * 4);
-    dw(seq, 8) = (DWORD)(uintptr_t)frames;
-    for (DWORD i = 0; i < dw(seq, 0x28); i++) {
-        // the byte goes into the argument's stack slot: a failed read leaves the file pointer's low byte
-        DWORD has = (DWORD)(uintptr_t)file;
-        fn<DWORD(THISCALL *)(void *, void *)>(0x4a22a0)(file, &has);
-        if (!(BYTE)has) {
-            reinterpret_cast<DWORD *>(bp(dw(seq, 8)))[i] = 0;
-            continue;
-        }
-        BYTE *f = static_cast<BYTE *>(pool_alloc(0x40));
-        if (f)
-            f = fn<BYTE *(THISCALL *)(void *)>(0x4a8a90)(f);
-        reinterpret_cast<DWORD *>(bp(dw(seq, 8)))[i] = (DWORD)(uintptr_t)f;
-        if (!fn<BYTE(THISCALL *)(void *, void *)>(0x4a9340)(f, file)) {
-            free_frames(seq);
-            return 0;
-        }
-    }
-    return 1;
+    __asm__("pushl %ebx\n\t"
+            "movl 8(%esp), %ebx\n\t"                       // file
+            "pushl %ebp\n\t"
+            "pushl %esi\n\t"
+            "movl %ecx, %esi\n\t"
+            "pushl %edi\n\t"
+            "pushl $0x10\n\t"
+            "movl %ebx, %ecx\n\t"
+            "leal 0xc(%esi), %eax\n\t"
+            "pushl %eax\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a1b00) ", %eax\n\t"   // FileBuf_Read: the rectangle
+            "calll *%eax\n\t"
+            "movl 0x28(%esi), %eax\n\t"
+            "leal (,%eax,4), %edi\n\t"
+            "pushl %edi\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x5d033a) ", %eax\n\t"   // operator new: the frame pointers
+            "calll *%eax\n\t"
+            "movl %edi, %ecx\n\t"
+            "movl %eax, %edx\n\t"
+            "movl %ecx, %ebp\n\t"
+            "xorl %eax, %eax\n\t"
+            "movl %edx, %edi\n\t"
+            "addl $4, %esp\n\t"
+            "shrl $2, %ecx\n\t"
+            "rep stosl\n\t"
+            "movl %ebp, %ecx\n\t"
+            "andl $3, %ecx\n\t"
+            "rep stosb\n\t"
+            "movl 0x28(%esi), %eax\n\t"
+            "xorl %edi, %edi\n\t"
+            "testl %eax, %eax\n\t"
+            "movl %edx, 8(%esi)\n\t"
+            "jbe 6f\n"
+            "1:\n\t"
+            "leal 0x14(%esp), %ecx\n\t"                    // the file argument's slot
+            "pushl %ecx\n\t"
+            "movl %ebx, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a22a0) ", %eax\n\t"   // FileBuf_ReadByte
+            "calll *%eax\n\t"
+            "movb 0x14(%esp), %al\n\t"
+            "testb %al, %al\n\t"
+            "je 3f\n\t"
+            "movl $0x40, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x417710) ", %eax\n\t"   // operator new (ecx)
+            "calll *%eax\n\t"
+            "testl %eax, %eax\n\t"
+            "je 2f\n\t"
+            "movl %eax, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a8a90) ", %eax\n\t"   // CFrame::Ctor
+            "calll *%eax\n\t"
+            "jmp 4f\n"
+            "2:\n\t"
+            "xorl %eax, %eax\n"
+            "4:\n\t"
+            "movl 8(%esi), %edx\n\t"
+            "pushl %ebx\n\t"
+            "movl %eax, %ecx\n\t"
+            "movl %eax, (%edx,%edi,4)\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a9340) ", %eax\n\t"   // CFrame::ReadFrm
+            "calll *%eax\n\t"
+            "testb %al, %al\n\t"
+            "je 7f\n\t"
+            "jmp 5f\n"
+            "3:\n\t"
+            "movl 8(%esi), %eax\n\t"
+            "movl $0, (%eax,%edi,4)\n"
+            "5:\n\t"
+            "movl 0x28(%esi), %eax\n\t"
+            "incl %edi\n\t"
+            "cmpl %eax, %edi\n\t"
+            "jb 1b\n"
+            "6:\n\t"
+            "popl %edi\n\t"
+            "popl %esi\n\t"
+            "popl %ebp\n\t"
+            "movb $1, %al\n\t"
+            "popl %ebx\n\t"
+            "retl $4\n"
+            "7:\n\t"
+            "movl %esi, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x56b6a0) ", %eax\n\t"   // CSequence::FreeFrames
+            "calll *%eax\n\t"
+            "popl %edi\n\t"
+            "popl %esi\n\t"
+            "popl %ebp\n\t"
+            "xorb %al, %al\n\t"
+            "popl %ebx\n\t"
+            "retl $4");
 }
 
 // 0x56ba90 (slot 13; file buffer): the bounding rectangle, then per frame a byte (1 for a frame with a width
@@ -252,19 +323,62 @@ static void THISCALL Sequence_AddFrame(BYTE *seq, BYTE *frame, DWORD filter6, DW
 }
 
 // 0x55f910 (CRotationSequence slot 15; file buffer): CSequence's, then the frame deltas (+0x44: count × 8
-// bytes, a new block)
-static BYTE THISCALL RotationSequence_ReadBinary(BYTE *seq, void *file)
+// bytes, a new block). Written as the exe's instructions (batch nulltest), so CSequence's ReadBinary and with it
+// CFrame::ReadFrm 0x4a9340 run at the exe's depth (above); with a new block the exe also stores count - 1 into the
+// file argument's slot.
+__attribute__((naked)) static BYTE THISCALL RotationSequence_ReadBinary(BYTE *, void *)
 {
-    if (!fn<BYTE(THISCALL *)(void *, void *)>(0x56b9d0)(seq, file))
-        return 0;
-    if (dw(seq, 0x44)) {
-        heap_free(bp(dw(seq, 0x44)));
-        dw(seq, 0x44) = 0;
-    }
-    void *d = heap_alloc(dw(seq, 0x28) * 8);
-    dw(seq, 0x44) = (DWORD)(uintptr_t)d;
-    fn<DWORD(THISCALL *)(void *, void *, DWORD)>(0x4a1b00)(file, d, dw(seq, 0x28) << 3);
-    return 1;
+    __asm__("pushl %ebx\n\t"
+            "movl 8(%esp), %ebx\n\t"                       // file
+            "pushl %esi\n\t"
+            "movl %ecx, %esi\n\t"
+            "pushl %ebx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x56b9d0) ", %eax\n\t"   // CSequence::ReadBinary
+            "calll *%eax\n\t"
+            "testb %al, %al\n\t"
+            "je 9f\n\t"
+            "movl 0x44(%esi), %eax\n\t"
+            "testl %eax, %eax\n\t"
+            "je 1f\n\t"
+            "pushl %eax\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x5d0320) ", %eax\n\t"   // operator delete
+            "calll *%eax\n\t"
+            "addl $4, %esp\n\t"
+            "movl $0, 0x44(%esi)\n"
+            "1:\n\t"
+            "pushl %edi\n\t"
+            "movl 0x28(%esi), %edi\n\t"
+            "leal (,%edi,8), %eax\n\t"
+            "pushl %eax\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x5d033a) ", %eax\n\t"   // operator new
+            "calll *%eax\n\t"
+            "addl $4, %esp\n\t"
+            "testl %eax, %eax\n\t"
+            "je 2f\n\t"
+            "decl %edi\n\t"
+            "movl %edi, 0x10(%esp)\n\t"                    // the file argument's slot
+            "jmp 3f\n"
+            "2:\n\t"
+            "xorl %eax, %eax\n"
+            "3:\n\t"
+            "movl 0x28(%esi), %ecx\n\t"
+            "movl %eax, 0x44(%esi)\n\t"
+            "shll $3, %ecx\n\t"
+            "pushl %ecx\n\t"
+            "pushl %eax\n\t"
+            "movl %ebx, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a1b00) ", %eax\n\t"   // FileBuf_Read: the deltas
+            "calll *%eax\n\t"
+            "popl %edi\n\t"
+            "popl %esi\n\t"
+            "movb $1, %al\n\t"
+            "popl %ebx\n\t"
+            "retl $4\n"
+            "9:\n\t"
+            "popl %esi\n\t"
+            "xorb %al, %al\n\t"
+            "popl %ebx\n\t"
+            "retl $4");
 }
 
 // 0x55f980 (CRotationSequence slot 13; file buffer): CSequence's, then the frame deltas
