@@ -360,7 +360,9 @@ void check_binary(Tally &t)
             return h;
         });
         // whole, or cut inside the rectangle (every frame byte then fails to read; a cut inside a frame leaves
-        // the exe's frame reader 0x4a9340 with locals the stack had)
+        // the exe's frame reader 0x4a9340 with locals the stack had). Both sides are called on the same stack
+        // pattern (zax_call_filled, batch nulltest): the frame reader takes its header from its stack slots when
+        // the read fails, so without a fill each side read what the check's code before it had left there
         for (int cut = 0; cut < 2; cut++) {
             const DWORD size = cut == 0 ? g_written_size : 9;
             wsprintfA(what, "ReadBinary source %d (%s), %d of %d bytes", k, rot ? "rotation" : "plain", size, g_written_size);
@@ -369,7 +371,9 @@ void check_binary(Tally &t)
                 Buf b(size);
                 BYTE *s = new_sequence(rot);
                 dw(s, 0x28) = dw(src, 0x28);
-                const BYTE r = at<BYTE(THISCALL *)(void *, void *)>(read_fn)(s, b.fb);
+                const DWORD args[1] = {(DWORD)(uintptr_t)b.fb};
+                const BYTE r = (BYTE)zax_call_filled(at<void *>(read_fn), (DWORD)(uintptr_t)s, args, 1,
+                                                     0x56b9d0u + (unsigned)(k * 2 + cut));
                 unsigned h = seq_hash(s, rot) ^ r;
                 h = fnv(h, &b.s.log, 4);
                 if (!dw(s, 8))

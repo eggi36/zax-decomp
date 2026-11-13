@@ -293,25 +293,94 @@ BYTE THISCALL Frame_FileName(BYTE *, void *out, const char *folder, const char *
     return r;
 }
 
-BYTE THISCALL Frame_Load(BYTE *frame, const char *folder, const char *name, DWORD filters, DWORD cached, DWORD mode)
+// g_PaletteHolderField 0x6be38c's value for Frame_Load's instructions (a leaf: only its return address goes on the
+// stack, into the slot the exe's next push takes)
+extern "C" void *__cdecl zax_palette_holder_field() { return bp_(*glob<DWORD *>(0x6be38c)); }
+
+// 0x4a9a30, written as the exe's instructions (batch nulltest, docs/DECOMPILATION.md section 16): on a file that
+// ends early CFrame::ReadFrm 0x4a9340 takes its header from its own stack slots as the stack had them, so it and the
+// calls before it run at the exe's depth (sub esp, 0x20; ebx, esi; the ZString at +8, the FileBuf at +0xc). The C++
+// body called it 8 bytes deeper. Calls go through eax where the exe's relative call leaves eax free.
+__attribute__((naked)) BYTE THISCALL Frame_Load(BYTE *, const char *, const char *, DWORD, DWORD, DWORD)
 {
-    palette_field_drop(frame);
-    fn<Thiscall0>(0x4aa790)(frame);
-    DWORD path;
-    zs_ctor(&path);
-    fn<BYTE(THISCALL *)(void *, void *, const char *, const char *, DWORD, DWORD)>(0x4a9900)(frame, &path, folder, name, filters, cached);
-    BYTE ok;
-    {
-        FileBuf fb;
-        if (fb.open(zs_c_str(&path), mode | 4)) {
-            ok = fn<BYTE(THISCALL *)(void *, void *)>(0x4a9340)(frame, fb.raw);
-            fb.close();
-        } else {
-            ok = 0;
-        }
-    }
-    zs_dtor(&path);
-    return ok;
+    __asm__("subl $0x20, %esp\n\t"
+            "pushl %ebx\n\t"
+            "pushl %esi\n\t"
+            "movl %ecx, %esi\n\t"
+            "calll _zax_palette_holder_field\n\t"
+            "movl %eax, %ecx\n\t"
+            "pushl %esi\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x418fc0) ", %eax\n\t"   // FieldDesc_IsDynamicIn
+            "calll *%eax\n\t"
+            "testb %al, %al\n\t"
+            "je 1f\n\t"
+            "calll _zax_palette_holder_field\n\t"
+            "movl %eax, %ecx\n\t"
+            "pushl %esi\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x418fb0) ", %eax\n\t"   // FieldDesc_RemoveDynamicFrom
+            "calll *%eax\n"
+            "1:\n\t"
+            "movl 0x3c(%esi), %eax\n\t"
+            "movl %esi, %ecx\n\t"
+            "andb $0xbf, %ah\n\t"
+            "movl %eax, 0x3c(%esi)\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4aa790) ", %eax\n\t"   // CFrame_Free
+            "calll *%eax\n\t"
+            "leal 8(%esp), %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4dec90) ", %eax\n\t"   // ZString_Ctor
+            "calll *%eax\n\t"
+            "movl 0x38(%esp), %eax\n\t"
+            "movl 0x34(%esp), %ecx\n\t"
+            "movl 0x30(%esp), %edx\n\t"
+            "pushl %eax\n\t"
+            "movl 0x30(%esp), %eax\n\t"
+            "pushl %ecx\n\t"
+            "pushl %edx\n\t"
+            "leal 0x14(%esp), %ecx\n\t"
+            "pushl %eax\n\t"
+            "pushl %ecx\n\t"
+            "movl %esi, %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a9900) ", %eax\n\t"   // CFrame::FileName
+            "calll *%eax\n\t"
+            "leal 0xc(%esp), %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a1780) ", %eax\n\t"   // FileBuf_Ctor
+            "calll *%eax\n\t"
+            "movl 0x3c(%esp), %edx\n\t"
+            "leal 8(%esp), %ecx\n\t"
+            "orl $4, %edx\n\t"
+            "pushl %edx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4e13a0) ", %eax\n\t"   // ZString_c_str
+            "calll *%eax\n\t"
+            "pushl %eax\n\t"
+            "leal 0x14(%esp), %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a1840) ", %eax\n\t"   // FileBuf_Open
+            "calll *%eax\n\t"
+            "testb %al, %al\n\t"
+            "je 2f\n\t"
+            "leal 0xc(%esp), %eax\n\t"
+            "movl %esi, %ecx\n\t"
+            "pushl %eax\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a9340) ", %eax\n\t"   // CFrame::ReadFrm
+            "calll *%eax\n\t"
+            "leal 0xc(%esp), %ecx\n\t"
+            "movb %al, %bl\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a2100) ", %eax\n\t"   // FileBuf_Close
+            "calll *%eax\n\t"
+            "jmp 3f\n"
+            "2:\n\t"
+            "xorb %bl, %bl\n"
+            "3:\n\t"
+            "leal 0xc(%esp), %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4a1800) ", %eax\n\t"   // FileBuf_Dtor
+            "calll *%eax\n\t"
+            "leal 8(%esp), %ecx\n\t"
+            "movl " ZAX_ASM_CODE_ATT(0x4defd0) ", %eax\n\t"   // ZString_Dtor
+            "calll *%eax\n\t"
+            "movb %bl, %al\n\t"
+            "popl %esi\n\t"
+            "popl %ebx\n\t"
+            "addl $0x20, %esp\n\t"
+            "retl $0x14");
 }
 
 BYTE THISCALL Frame_Save(BYTE *frame, const char *path, DWORD mode)
